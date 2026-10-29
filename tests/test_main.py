@@ -1,5 +1,7 @@
 """Tests de src/main.py: ventana, menú, vistas y utilidades de la GUI."""
 
+import importlib
+import inspect
 import sys
 import tkinter as tk
 import types
@@ -51,6 +53,21 @@ class OpcionesTest(unittest.TestCase):
         for opcion in main.OPCIONES:
             with self.subTest(clave=opcion.clave):
                 self.assertIn(opcion.estilo, branding._BUTTON_STYLES)
+
+    def test_connected_modules_follow_the_flow_contract(self) -> None:
+        """La GUI llama a cualquier flujo de la misma forma: si un módulo
+        no cumple el contrato, el error saldría recién al usar el botón."""
+        conectadas = [o for o in main.OPCIONES if o.modulo]
+        self.assertEqual([o.modulo for o in conectadas], ["fbl1n", "fbl5n", "y_fi_grl_004"])
+        for opcion in conectadas:
+            with self.subTest(modulo=opcion.modulo):
+                flujo = importlib.import_module(opcion.modulo)
+                self.assertEqual(flujo.TRANSACCION, opcion.transaccion)
+                for nombre in ("validar_configuracion", "get_sap_session", "descargar"):
+                    self.assertTrue(callable(getattr(flujo, nombre)), nombre)
+                parametros = inspect.signature(flujo.descargar).parameters
+                self.assertIn("progreso", parametros)
+                self.assertEqual("fecha_clave" in parametros, opcion.usa_fecha_clave)
 
 
 class CrearAppTest(unittest.TestCase):
@@ -248,47 +265,84 @@ class CerrarSplashTest(unittest.TestCase):
             main._cerrar_splash()
 
 
-class AbrirAcreedoresTest(_TkTestCase):
+class VistaDescargaTest(_TkTestCase):
+    """Vistas conectadas a SAP: Acreedores, Deudores y Maestro de cuentas."""
+
     def setUp(self) -> None:
         super().setUp()
         self.root._logo_ref = None
         self.parent = tk.Frame(self.root)
         self.parent.pack(fill="both", expand=True)
-        self.frame = main.abrir_acreedores(self.root, self.parent)
+
+    def _abrir(self, clave: str) -> tk.Frame:
+        frame = main.VISTAS[clave](self.root, self.parent)
+        return frame
 
     def test_all_companies_checked_by_default(self) -> None:
-        self.assertEqual(list(self.frame.vars_sociedades), list(comun.SOCIEDADES))
-        self.assertTrue(all(v.get() for v in self.frame.vars_sociedades.values()))
+        for clave in ("acreedores", "deudores", "maestro_cuentas"):
+            with self.subTest(clave=clave):
+                frame = self._abrir(clave)
+                self.assertEqual(list(frame.vars_sociedades), list(comun.SOCIEDADES))
+                self.assertTrue(all(v.get() for v in frame.vars_sociedades.values()))
+                frame.btn_atras.invoke()
 
     def test_none_and_all_buttons_toggle_every_company(self) -> None:
-        self.frame.btn_ninguna.invoke()
-        self.assertFalse(any(v.get() for v in self.frame.vars_sociedades.values()))
-        self.frame.btn_todas.invoke()
-        self.assertTrue(all(v.get() for v in self.frame.vars_sociedades.values()))
+        frame = self._abrir("deudores")
+        frame.btn_ninguna.invoke()
+        self.assertFalse(any(v.get() for v in frame.vars_sociedades.values()))
+        frame.btn_todas.invoke()
+        self.assertTrue(all(v.get() for v in frame.vars_sociedades.values()))
+
+    def test_button_names_the_transaction(self) -> None:
+        for clave, transaccion in (("acreedores", "FBL1N"), ("maestro_cuentas", "Y_FI_GRL_004")):
+            with self.subTest(clave=clave):
+                frame = self._abrir(clave)
+                self.assertEqual(frame.btn_descargar.cget("text"), f"Descargar {transaccion}")
+                frame.btn_atras.invoke()
+
+    def test_key_date_only_where_the_flow_uses_it(self) -> None:
+        for clave, usa_fecha in (
+            ("acreedores", True),
+            ("deudores", True),
+            ("maestro_cuentas", False),
+        ):
+            with self.subTest(clave=clave):
+                frame = self._abrir(clave)
+                self.assertEqual(frame.entry_fecha is not None, usa_fecha)
+                frame.btn_atras.invoke()
 
     def test_key_date_defaults_to_today(self) -> None:
-        self.assertEqual(self.frame.entry_fecha.get_date(), date.today())
+        self.assertEqual(self._abrir("acreedores").entry_fecha.get_date(), date.today())
 
     def test_key_date_entry_does_not_validate_on_key(self) -> None:
         """REGRESIÓN heredada de activos-propios-py: `validate="key"` en un
         DateEntry rompe la selección desde el calendario."""
-        self.assertNotIn(str(self.frame.entry_fecha.cget("validate")), ("key", "all"))
+        frame = self._abrir("acreedores")
+        self.assertNotIn(str(frame.entry_fecha.cget("validate")), ("key", "all"))
 
-    def test_download_button_passes_checked_companies_and_date(self) -> None:
-        self.frame.btn_ninguna.invoke()
-        self.frame.vars_sociedades["ISA"].set(True)
-        self.frame.vars_sociedades["XM"].set(True)
-        self.frame.entry_fecha.set_date(date(2026, 9, 30))
-        with patch("main._descargar_fbl1n_handler") as handler:
-            self.frame.btn_descargar.invoke()
+    def test_download_button_passes_option_companies_and_date(self) -> None:
+        frame = self._abrir("deudores")
+        frame.btn_ninguna.invoke()
+        frame.vars_sociedades["ISA"].set(True)
+        frame.vars_sociedades["XM"].set(True)
+        frame.entry_fecha.set_date(date(2026, 9, 30))
+        with patch("main._descargar_handler") as handler:
+            frame.btn_descargar.invoke()
         args = handler.call_args[0]
-        self.assertEqual(args[1], ["ISA", "XM"])
-        self.assertEqual(args[2], date(2026, 9, 30))
-        self.assertIs(args[4], self.frame.btn_descargar)
-        self.assertIs(args[5], self.frame.btn_atras)
+        self.assertEqual(args[1].clave, "deudores")
+        self.assertEqual(args[2], ["ISA", "XM"])
+        self.assertEqual(args[3], date(2026, 9, 30))
+        self.assertIs(args[5], frame.btn_descargar)
+        self.assertIs(args[6], frame.btn_atras)
+
+    def test_download_without_key_date_passes_none(self) -> None:
+        frame = self._abrir("maestro_cuentas")
+        with patch("main._descargar_handler") as handler:
+            frame.btn_descargar.invoke()
+        self.assertIsNone(handler.call_args[0][3])
 
 
-class DescargarFbl1nHandlerTest(_TkTestCase):
+class DescargarHandlerTest(_TkTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.root.after = lambda delay, fn, *args: fn(*args)  # UI síncrona
@@ -302,9 +356,15 @@ class DescargarFbl1nHandlerTest(_TkTestCase):
         self._disposicion.stop()
         super().tearDown()
 
-    def _llamar(self, sociedades=("ISA",), fecha=date(2026, 10, 28)) -> None:
-        main._descargar_fbl1n_handler(
-            self.root, list(sociedades), fecha, self.status_var, self.button, self.btn_atras
+    def _llamar(self, clave="acreedores", sociedades=("ISA",), fecha=date(2026, 10, 28)) -> None:
+        main._descargar_handler(
+            self.root,
+            main._opcion(clave),
+            list(sociedades),
+            fecha,
+            self.status_var,
+            self.button,
+            self.btn_atras,
         )
 
     def _sync_thread(self):
@@ -331,24 +391,28 @@ class DescargarFbl1nHandlerTest(_TkTestCase):
         self.assertEqual(mock_err.call_args[0][0], "Datos inválidos")
 
     def test_pending_layout_shows_error(self) -> None:
+        """FBL5N todavía no tiene disposición: la app avisa sin tocar SAP."""
         with (
-            patch.object(fbl1n, "DISPOSICION", None),
             patch("main.messagebox.showerror") as mock_err,
             patch("main.messagebox.askyesno") as mock_ask,
         ):
-            self._llamar()
+            self._llamar(clave="deudores")
         mock_ask.assert_not_called()
-        self.assertIn("disposición", mock_err.call_args[0][1])
+        self.assertIn("FBL5N", mock_err.call_args[0][1])
 
     def test_confirmation_warns_about_clipboard_and_summarizes_companies(self) -> None:
-        with (
-            patch("main.messagebox.askyesno", return_value=False) as mock_ask,
-        ):
+        with patch("main.messagebox.askyesno", return_value=False) as mock_ask:
             self._llamar(sociedades=comun.SOCIEDADES)
-        mensaje = mock_ask.call_args[0][1]
+        titulo, mensaje = mock_ask.call_args[0][:2]
+        self.assertEqual(titulo, "Confirmar descarga de FBL1N")
         self.assertIn("portapapeles", mensaje)
         self.assertIn("todas las sociedades (28)", mensaje)
         self.assertIn("28.10.2026", mensaje)
+
+    def test_confirmation_without_key_date(self) -> None:
+        with patch("main.messagebox.askyesno", return_value=False) as mock_ask:
+            self._llamar(clave="maestro_cuentas", fecha=None)
+        self.assertNotIn("fecha clave", mock_ask.call_args[0][1])
 
     def test_disables_buttons_before_starting_thread(self) -> None:
         estados = {}
@@ -371,7 +435,7 @@ class DescargarFbl1nHandlerTest(_TkTestCase):
     def test_happy_path_downloads_and_reenables(self) -> None:
         mocks = {
             "get_sap_session": MagicMock(return_value="sesion"),
-            "descargar_fbl1n": MagicMock(return_value=("C:/app/salida", "FBL1N_x.xlsx")),
+            "descargar": MagicMock(return_value=("C:/app/salida", "FBL1N_x.xlsx")),
         }
         with (
             patch("main.messagebox.askyesno", return_value=True),
@@ -380,18 +444,32 @@ class DescargarFbl1nHandlerTest(_TkTestCase):
             patch.multiple("fbl1n", **mocks),
         ):
             self._llamar(sociedades=["xm", "ISA"])
-        mocks["descargar_fbl1n"].assert_called_once_with(
-            "sesion", ["ISA", "XM"], date(2026, 10, 28), progreso=ANY
+        mocks["descargar"].assert_called_once_with(
+            "sesion", ["ISA", "XM"], progreso=ANY, fecha_clave=date(2026, 10, 28)
         )
         self.assertIn("FBL1N_x.xlsx", mock_info.call_args[0][1])
         self.assertEqual(str(self.button["state"]), "normal")
         self.assertEqual(str(self.btn_atras["state"]), "normal")
         self.assertEqual(self.status_var.get(), "")
 
+    def test_flow_without_key_date_is_called_without_it(self) -> None:
+        mocks = {
+            "get_sap_session": MagicMock(return_value="sesion"),
+            "descargar": MagicMock(return_value=("C:/salida", "Y_FI_GRL_004_x.xlsx")),
+        }
+        with (
+            patch("main.messagebox.askyesno", return_value=True),
+            patch("main.messagebox.showinfo"),
+            self._sync_thread(),
+            patch.multiple("y_fi_grl_004", **mocks),
+        ):
+            self._llamar(clave="maestro_cuentas", fecha=None)
+        mocks["descargar"].assert_called_once_with("sesion", ["ISA"], progreso=ANY)
+
     def test_flow_error_shows_message_and_reenables(self) -> None:
         mocks = {
             "get_sap_session": MagicMock(return_value="sesion"),
-            "descargar_fbl1n": MagicMock(side_effect=RuntimeError("Falló: Ejecutar el reporte")),
+            "descargar": MagicMock(side_effect=RuntimeError("Falló: Ejecutar el reporte")),
         }
         with (
             patch("main.messagebox.askyesno", return_value=True),
@@ -407,7 +485,7 @@ class DescargarFbl1nHandlerTest(_TkTestCase):
         self.assertEqual(str(self.btn_atras["state"]), "normal")
 
     def test_progress_updates_status_label(self) -> None:
-        def descargar(session, socs, fecha, progreso):
+        def descargar(session, socs, progreso, fecha_clave):
             progreso("Paso 4 de 7: ejecutando el reporte…")
             self.assertEqual(self.status_var.get(), "Paso 4 de 7: ejecutando el reporte…")
             return ("C:/salida", "FBL1N_x.xlsx")
@@ -416,7 +494,7 @@ class DescargarFbl1nHandlerTest(_TkTestCase):
             patch("main.messagebox.askyesno", return_value=True),
             patch("main.messagebox.showinfo"),
             self._sync_thread(),
-            patch.multiple("fbl1n", get_sap_session=MagicMock(), descargar_fbl1n=descargar),
+            patch.multiple("fbl1n", get_sap_session=MagicMock(), descargar=descargar),
         ):
             self._llamar()
 

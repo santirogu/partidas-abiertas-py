@@ -483,5 +483,58 @@ class VolverAlInicioTest(unittest.TestCase):
         comun.volver_al_inicio(session)
 
 
+class ValidarDisposicionTest(unittest.TestCase):
+    def test_pending_layout_names_the_transaction(self) -> None:
+        for valor in (None, "", "   "):
+            with self.subTest(valor=valor), self.assertRaises(ValueError) as ctx:
+                comun.validar_disposicion(valor, "FBL5N")
+            self.assertIn("FBL5N", str(ctx.exception))
+            self.assertIn("fbl5n.DISPOSICION", str(ctx.exception))
+
+    def test_returns_stripped_name(self) -> None:
+        self.assertEqual(comun.validar_disposicion(" /PARTABIERTA ", "FBL1N"), "/PARTABIERTA")
+
+
+class CrearAvisadorTest(unittest.TestCase):
+    def test_logs_and_forwards_to_progress(self) -> None:
+        recibidos = []
+        avisar = comun.crear_avisador(recibidos.append)
+        with self.assertLogs(comun.logger, level="INFO") as logs:
+            avisar("Paso 1")
+        self.assertEqual(recibidos, ["Paso 1"])
+        self.assertIn("Paso 1", logs.output[0])
+
+    def test_progress_failure_is_ignored(self) -> None:
+        def progreso(_texto: str) -> None:
+            raise RuntimeError("la ventana se cerró")
+
+        with self.assertLogs(comun.logger, level="INFO") as logs:
+            comun.crear_avisador(progreso)("Paso 2")
+        self.assertTrue(any("ignorado" in linea for linea in logs.output))
+
+    def test_works_without_progress(self) -> None:
+        comun.crear_avisador(None)("Paso 3")
+
+
+class TerminarExportacionTest(unittest.TestCase):
+    def test_waits_for_file_and_returns_to_initial_screen(self) -> None:
+        session = helpers.MockSession()
+        archivo = Path("C:/salida/FBL1N_x.xlsx")
+        with patch("comun.esperar_archivo_listo", return_value=True) as esperar:
+            comun.terminar_exportacion(session, archivo, timeout_seg=30)
+        esperar.assert_called_once_with(archivo, timeout_seg=30)
+        self.assertEqual(session.actions[-1], ("wnd[0]", "sendVKey", 0))
+
+    def test_raises_when_file_never_appears(self) -> None:
+        session = helpers.MockSession()
+        with (
+            patch("comun.esperar_archivo_listo", return_value=False),
+            self.assertRaises(RuntimeError) as ctx,
+        ):
+            comun.terminar_exportacion(session, Path("C:/salida/x.xlsx"), timeout_seg=5)
+        self.assertIn("x.xlsx", str(ctx.exception))
+        self.assertEqual(session.actions, [])
+
+
 if __name__ == "__main__":
     unittest.main()

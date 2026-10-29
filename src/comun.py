@@ -91,6 +91,18 @@ def validar_fecha_clave(valor: date | str) -> date:
         raise ValueError(f"Fecha clave inválida: '{texto}'. Usa el formato dd.mm.aaaa.") from exc
 
 
+def validar_disposicion(nombre: str | None, transaccion: str) -> str:
+    """Devuelve el nombre de la disposición o lanza `ValueError` si el flujo
+    aún no la tiene configurada (sin ella el export sale con otras columnas)."""
+    if not nombre or not nombre.strip():
+        raise ValueError(
+            f"Todavía no está configurada la disposición de {transaccion} "
+            f"({transaccion.lower()}.DISPOSICION). Sin ella el archivo saldría "
+            "con otras columnas."
+        )
+    return nombre.strip()
+
+
 # ---------------------------------------------------------------------------
 # LOGGING
 # ---------------------------------------------------------------------------
@@ -171,6 +183,25 @@ def cerrar_logging() -> None:
 def log(mensaje: str) -> None:
     """Registra un mensaje informativo (consola + archivo, si están)."""
     logger.info(mensaje)
+
+
+def crear_avisador(progreso: Callable[[str], None] | None) -> Callable[[str], None]:
+    """Devuelve una función que registra cada texto en el log y, si hay
+    `progreso`, se lo pasa (la GUI lo muestra en el label de estado).
+
+    Un fallo de `progreso` (p. ej. la ventana ya se cerró) nunca detiene el
+    flujo de SAP.
+    """
+
+    def avisar(texto: str) -> None:
+        log(texto)
+        if progreso is not None:
+            try:
+                progreso(texto)
+            except Exception as exc:
+                log(f"progreso falló (ignorado): {exc!r}")
+
+    return avisar
 
 
 def ejecutar(descripcion: str, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
@@ -503,6 +534,18 @@ def volver_al_inicio(session) -> None:
         ejecutar("Volver a la pantalla inicial de SAP", _ir_al_inicio)
     except Exception as exc:
         log(f"No se pudo volver a la pantalla inicial (ignorado): {exc}")
+
+
+def terminar_exportacion(session, archivo: Path, timeout_seg: float) -> None:
+    """Espera a que SAP termine de escribir `archivo` y deja SAP en la
+    pantalla inicial. Lanza `RuntimeError` si el archivo no aparece."""
+    if not esperar_archivo_listo(archivo, timeout_seg=timeout_seg):
+        raise RuntimeError(
+            f"SAP no terminó de guardar {archivo.name} en {archivo.parent} "
+            f"después de {timeout_seg:.0f} s. Revisa si quedó abierta alguna "
+            "ventana en SAP."
+        )
+    volver_al_inicio(session)
 
 
 def abrir_transaccion(session, transaccion: str) -> None:

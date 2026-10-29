@@ -29,7 +29,7 @@ carpeta de red `//192.168.68.116/Compartida` (montada en
 | 0. Fichas de los flujos | ✅ `docs/fichas-flujos.md` |
 | 1. Esqueleto | ✅ paths, branding, comun, helpers de tests, pyproject + ruff |
 | 2. GUI base | ✅ menú 2×2, 4 vistas pendientes con "← Atrás", footer, errores, splash |
-| 3. Flujos | 🟡 FBL1N implementado con la disposición `/PARTABIERTA` (falta probarlo en Windows); FBL5N, Y_FI_GRL_004 y FAGLL03 esperan grabación nueva |
+| 3. Flujos | 🟡 FBL1N (`/PARTABIERTA`) y Y_FI_GRL_004 implementados; FBL5N implementado sin disposición (`fbl5n.DISPOSICION = None`); ninguno probado aún en Windows. FAGLL03 espera grabación nueva |
 | 4. Empaquetado | — |
 | 5. Docs y skills | — |
 | 6. Extras (cobertura, CI, lockfile) | — |
@@ -47,14 +47,18 @@ Python 3.11 y 3.12 de Homebrew **no** traen Tk; el 3.11 de python.org sí
 
 ```
 src/
-  main.py      GUI: OPCIONES, VISTAS, construir_menu, crear_app, main,
-               abrir_acreedores + _descargar_fbl1n_handler
-  comun.py     TITULO_APP, TITULAR, SOCIEDADES, validar_*, logging, ejecutar,
-               get_sap_session, com_apartment, copiar_al_portapapeles,
-               pasos de SAP compartidos (abrir_transaccion, selección
-               múltiple, calendario, elegir_disposicion, exportar_hoja_calculo,
-               volver_al_inicio), utilidades de archivos
-  fbl1n.py     flujo FBL1N: DISPOSICION, pasos, descargar_fbl1n, CLI
+  main.py      GUI: OPCIONES (con modulo/usa_fecha_clave), VISTAS,
+               _crear_vista_descarga, _descargar_handler, construir_menu,
+               crear_app, main
+  comun.py     TITULO_APP, TITULAR, SOCIEDADES, validar_*, logging,
+               crear_avisador, ejecutar, get_sap_session, com_apartment,
+               copiar_al_portapapeles, pasos de SAP compartidos
+               (abrir_transaccion, selección múltiple, calendario,
+               elegir_disposicion, exportar_hoja_calculo, volver_al_inicio,
+               terminar_exportacion), utilidades de archivos
+  fbl1n.py     flujo FBL1N (acreedores)        ┐ contrato de módulo de flujo:
+  fbl5n.py     flujo FBL5N (deudores)          │ TRANSACCION, validar_configuracion(),
+  y_fi_grl_004.py  maestro de cuentas          ┘ get_sap_session(), descargar(...), main()
   branding.py  paleta COLOR_*, cargar_logo, RoundedButton
   paths.py     PROJECT_ROOT, SALIDA_DIR, LOGS_DIR, bundled_resource_path
 tests/
@@ -64,7 +68,7 @@ resources/
   logo.png         se empaqueta
   grabaciones/     .vbs en UTF-16LE, solo referencia (no se empaquetan)
   ejemplos/        exports reales de SAP (ignorada por git)
-salida/            runtime (ignorada): exports, Excel procesados, logs/app.log
+salida/            runtime (ignorada): exports de SAP, logs/app.log
 ```
 
 No hay `entrada/`: los datos salen de SAP, no de un archivo que edite el
@@ -74,8 +78,10 @@ usuario.
 
 ```bash
 .venv/bin/python src/main.py
-.venv/bin/python -m unittest discover tests -v       # 134 tests
+.venv/bin/python -m unittest discover tests -v       # 169 tests
 .venv/bin/python src/fbl1n.py 28.10.2026 [ISA XM]    # CLI (solo Windows con SAP)
+.venv/bin/python src/fbl5n.py 28.10.2026 [ISA XM]
+.venv/bin/python src/y_fi_grl_004.py [ISA XM]
 .venv/bin/python -m unittest tests.test_comun -v
 .venv/bin/ruff check src tests && .venv/bin/ruff format src tests
 ```
@@ -123,6 +129,19 @@ usuario.
 - **Las grabaciones del repo no llevan el usuario de Windows** (el repo es
   público): se reemplaza por `USUARIO` al copiarlas. El original queda en
   la carpeta de red.
+- **Contrato de los módulos de flujo.** La GUI no conoce cada flujo: una
+  sola vista (`_crear_vista_descarga`) y un solo handler
+  (`_descargar_handler`) importan `Opcion.modulo` y llaman
+  `validar_configuracion()`, `get_sap_session()` y
+  `descargar(session, sociedades, [fecha_clave=], progreso=)`.
+  `test_connected_modules_follow_the_flow_contract` lo verifica.
+  FBL1N y FBL5N comparten secuencia pero son módulos separados para poder
+  ajustar cada uno si su pantalla de SAP cambia.
+- **Y_FI_GRL_004 borra la selección antes de pegar** aunque su grabación
+  no lo haga: es el mismo diálogo de selección múltiple de FBL1N/FBL5N, y
+  así no se cuela una sociedad por defecto.
+- **Y_FI_GRL_004 no elige disposición** (la grabación tampoco): sale con
+  la disposición por defecto de cada usuario.
 - **`helpers` tiene su propia sección en isort** (`pyproject.toml`): es
   quien agrega `src/` al `sys.path`, así que debe importarse antes que
   cualquier módulo del proyecto.

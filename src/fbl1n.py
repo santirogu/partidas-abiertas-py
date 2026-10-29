@@ -9,6 +9,9 @@ exporta SAP, sin procesarlo. Diferencias con la grabación:
 - La disposición se elige por nombre (`DISPOSICION`), no por número de fila.
 - El archivo se guarda en `salida/` como `FBL1N_AAAAMMDD_HHMMSS.xlsx`.
 
+Cumple el contrato de los módulos de flujo que usa la GUI:
+`validar_configuracion()`, `get_sap_session()` y `descargar(...)`.
+
 REQUISITOS
 ==========
 Windows con SAP GUI abierto, sesión iniciada y scripting habilitado.
@@ -33,19 +36,19 @@ from comun import (
     abrir_transaccion,
     cargar_valor_unico,
     configurar_logging,
+    crear_avisador,
     ejecutar,
     ejecutar_reporte,
     elegir_disposicion,
     elegir_fecha_en_calendario,
-    esperar_archivo_listo,
     exportar_hoja_calculo,
     get_sap_session,
-    log,
     nombre_con_timestamp,
     pegar_seleccion_multiple,
+    terminar_exportacion,
+    validar_disposicion,
     validar_fecha_clave,
     validar_sociedades,
-    volver_al_inicio,
 )
 from paths import SALIDA_DIR
 
@@ -79,14 +82,9 @@ TIMEOUT_ARCHIVO_SEG = 120.0
 # ---------------------------------------------------------------------------
 
 
-def validar_disposicion() -> str:
-    """Devuelve `DISPOSICION` o lanza `ValueError` si aún no se configuró."""
-    if not DISPOSICION or not DISPOSICION.strip():
-        raise ValueError(
-            "Todavía no está configurada la disposición de FBL1N "
-            "(fbl1n.DISPOSICION). Sin ella el archivo saldría con otras columnas."
-        )
-    return DISPOSICION.strip()
+def validar_configuracion() -> str:
+    """Devuelve la disposición o lanza `ValueError` si aún no se configuró."""
+    return validar_disposicion(DISPOSICION, TRANSACCION)
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +120,7 @@ def marcar_clases_de_partida(session) -> None:
 # ---------------------------------------------------------------------------
 
 
-def descargar_fbl1n(
+def descargar(
     session,
     sociedades: Iterable[str],
     fecha_clave: date | str,
@@ -131,25 +129,17 @@ def descargar_fbl1n(
 ) -> tuple[str, str]:
     """Descarga FBL1N y devuelve `(carpeta, nombre_archivo)`.
 
-    Aborta en el primer error: cada paso depende del anterior.
-    `progreso(texto)` recibe una descripción del paso en curso (la GUI la
-    muestra en el label de estado); un fallo ahí nunca detiene el flujo.
+    Aborta en el primer error: cada paso depende del anterior. Todo se
+    valida antes de tocar SAP. `progreso(texto)` recibe el paso en curso.
     """
     socs = validar_sociedades(sociedades)
     fecha = validar_fecha_clave(fecha_clave)
-    disposicion = validar_disposicion()
+    disposicion = validar_configuracion()
 
     carpeta = Path(carpeta_destino)
     carpeta.mkdir(parents=True, exist_ok=True)
     nombre = nombre_con_timestamp(PREFIJO_SALIDA)
-
-    def avisar(texto: str) -> None:
-        log(texto)
-        if progreso is not None:
-            try:
-                progreso(texto)
-            except Exception as exc:
-                log(f"progreso falló (ignorado): {exc!r}")
+    avisar = crear_avisador(progreso)
 
     avisar(f"FBL1N: {len(socs)} sociedad(es), fecha clave {fecha:%d.%m.%Y}")
     avisar("Paso 1 de 7: abriendo FBL1N…")
@@ -167,13 +157,7 @@ def descargar_fbl1n(
     avisar("Paso 6 de 7: exportando a Excel…")
     archivo = exportar_hoja_calculo(session, carpeta, nombre)
     avisar("Paso 7 de 7: esperando a que SAP termine de guardar…")
-    if not esperar_archivo_listo(archivo, timeout_seg=TIMEOUT_ARCHIVO_SEG):
-        raise RuntimeError(
-            f"SAP no terminó de guardar {nombre} en {carpeta} "
-            f"después de {TIMEOUT_ARCHIVO_SEG:.0f} s. Revisa si quedó abierta "
-            "alguna ventana en SAP."
-        )
-    volver_al_inicio(session)
+    terminar_exportacion(session, archivo, TIMEOUT_ARCHIVO_SEG)
     avisar(f"FBL1N listo: {archivo}")
     return str(carpeta), nombre
 
@@ -194,9 +178,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         validar_sociedades(sociedades)
         validar_fecha_clave(fecha_clave)
-        validar_disposicion()
+        validar_configuracion()
         session = get_sap_session()
-        carpeta, nombre = descargar_fbl1n(session, sociedades, fecha_clave)
+        carpeta, nombre = descargar(session, sociedades, fecha_clave)
     except (ValueError, RuntimeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

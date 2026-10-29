@@ -18,19 +18,19 @@ import fbl1n
 DISPOSICION = "/PARTABIERTA"
 
 
-class ValidarDisposicionTest(unittest.TestCase):
+class ValidarConfiguracionTest(unittest.TestCase):
     def test_pending_layout_raises(self) -> None:
         with patch.object(fbl1n, "DISPOSICION", None), self.assertRaises(ValueError) as ctx:
-            fbl1n.validar_disposicion()
+            fbl1n.validar_configuracion()
         self.assertIn("disposición", str(ctx.exception))
 
     def test_returns_configured_layout(self) -> None:
         with patch.object(fbl1n, "DISPOSICION", f" {DISPOSICION} "):
-            self.assertEqual(fbl1n.validar_disposicion(), DISPOSICION)
+            self.assertEqual(fbl1n.validar_configuracion(), DISPOSICION)
 
     def test_uses_confirmed_layout(self) -> None:
         """/PARTABIERTA es la disposición confirmada por el equipo usuario."""
-        self.assertEqual(fbl1n.validar_disposicion(), "/PARTABIERTA")
+        self.assertEqual(fbl1n.validar_configuracion(), "/PARTABIERTA")
 
 
 class PasosTest(unittest.TestCase):
@@ -78,7 +78,7 @@ class PasosTest(unittest.TestCase):
         )
 
 
-class DescargarFbl1nTest(unittest.TestCase):
+class DescargarTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.carpeta = Path(self._tmp.name) / "salida"
@@ -92,7 +92,7 @@ class DescargarFbl1nTest(unittest.TestCase):
         self._patches = [
             patch.object(fbl1n, "DISPOSICION", DISPOSICION),
             patch.dict(sys.modules, {"win32clipboard": self.clip}),
-            patch("fbl1n.esperar_archivo_listo", return_value=True),
+            patch("comun.esperar_archivo_listo", return_value=True),
         ]
         for p in self._patches:
             p.start()
@@ -106,7 +106,7 @@ class DescargarFbl1nTest(unittest.TestCase):
         return self.session.actions.index(accion)
 
     def test_runs_steps_in_recording_order(self) -> None:
-        fbl1n.descargar_fbl1n(self.session, ["ISA", "XM"], date(2026, 10, 28), self.carpeta)
+        fbl1n.descargar(self.session, ["ISA", "XM"], date(2026, 10, 28), self.carpeta)
         orden = [
             ("wnd[0]/tbar[0]/okcd", "text=", "/nFBL1N"),
             ("wnd[0]/usr/btn%_KD_LIFNR_%_APP_%-VALU_PUSH", "press"),
@@ -124,9 +124,7 @@ class DescargarFbl1nTest(unittest.TestCase):
         self.assertEqual(self.clip.contenido[0], "ISA\r\nXM")
 
     def test_saves_in_destination_with_timestamped_name(self) -> None:
-        carpeta, nombre = fbl1n.descargar_fbl1n(
-            self.session, ["ISA"], date(2026, 10, 28), self.carpeta
-        )
+        carpeta, nombre = fbl1n.descargar(self.session, ["ISA"], date(2026, 10, 28), self.carpeta)
         self.assertEqual(carpeta, str(self.carpeta))
         self.assertRegex(nombre, r"^FBL1N_\d{8}_\d{6}\.xlsx$")
         self.assertIn(("wnd[1]/usr/ctxtDY_PATH", "text=", str(self.carpeta)), self.session.actions)
@@ -134,11 +132,11 @@ class DescargarFbl1nTest(unittest.TestCase):
         self.assertTrue(self.carpeta.is_dir())
 
     def test_selects_layout_by_name(self) -> None:
-        fbl1n.descargar_fbl1n(self.session, ["ISA"], date(2026, 10, 28), self.carpeta)
+        fbl1n.descargar(self.session, ["ISA"], date(2026, 10, 28), self.carpeta)
         self.assertIn((comun.ID_GRILLA_DISPOSICIONES, "currentCellRow=", 1), self.session.actions)
 
     def test_returns_to_initial_screen_at_the_end(self) -> None:
-        fbl1n.descargar_fbl1n(self.session, ["ISA"], date(2026, 10, 28), self.carpeta)
+        fbl1n.descargar(self.session, ["ISA"], date(2026, 10, 28), self.carpeta)
         self.assertEqual(
             self.session.actions[-2:],
             [("wnd[0]/tbar[0]/okcd", "text=", "/n"), ("wnd[0]", "sendVKey", 0)],
@@ -151,20 +149,20 @@ class DescargarFbl1nTest(unittest.TestCase):
         }
         for nombre, (sociedades, fecha) in casos.items():
             with self.subTest(caso=nombre), self.assertRaises(ValueError):
-                fbl1n.descargar_fbl1n(self.session, sociedades, fecha, self.carpeta)
+                fbl1n.descargar(self.session, sociedades, fecha, self.carpeta)
         self.assertEqual(self.session.actions, [])
 
     def test_pending_layout_does_not_touch_sap(self) -> None:
         with patch.object(fbl1n, "DISPOSICION", None), self.assertRaises(ValueError):
-            fbl1n.descargar_fbl1n(self.session, ["ISA"], date(2026, 10, 28), self.carpeta)
+            fbl1n.descargar(self.session, ["ISA"], date(2026, 10, 28), self.carpeta)
         self.assertEqual(self.session.actions, [])
 
     def test_raises_when_file_never_appears(self) -> None:
         with (
-            patch("fbl1n.esperar_archivo_listo", return_value=False),
+            patch("comun.esperar_archivo_listo", return_value=False),
             self.assertRaises(RuntimeError) as ctx,
         ):
-            fbl1n.descargar_fbl1n(self.session, ["ISA"], date(2026, 10, 28), self.carpeta)
+            fbl1n.descargar(self.session, ["ISA"], date(2026, 10, 28), self.carpeta)
         self.assertIn("no terminó de guardar", str(ctx.exception))
 
     def test_reports_progress_and_ignores_callback_errors(self) -> None:
@@ -174,9 +172,7 @@ class DescargarFbl1nTest(unittest.TestCase):
             mensajes.append(texto)
             raise RuntimeError("la GUI se cerró")
 
-        fbl1n.descargar_fbl1n(
-            self.session, ["ISA"], date(2026, 10, 28), self.carpeta, progreso=progreso
-        )
+        fbl1n.descargar(self.session, ["ISA"], date(2026, 10, 28), self.carpeta, progreso=progreso)
         self.assertTrue(any("Paso 4 de 7" in m for m in mensajes))
         self.assertTrue(mensajes[-1].startswith("FBL1N listo"))
 
@@ -213,7 +209,7 @@ class MainEntryPointTest(unittest.TestCase):
         with (
             patch.object(fbl1n, "DISPOSICION", DISPOSICION),
             patch("fbl1n.get_sap_session", return_value="sesion"),
-            patch("fbl1n.descargar_fbl1n", descargar),
+            patch("fbl1n.descargar", descargar),
         ):
             codigo, out, _ = self._main(["28.10.2026"])
         self.assertEqual(codigo, 0)
@@ -225,7 +221,7 @@ class MainEntryPointTest(unittest.TestCase):
         with (
             patch.object(fbl1n, "DISPOSICION", DISPOSICION),
             patch("fbl1n.get_sap_session", return_value="sesion"),
-            patch("fbl1n.descargar_fbl1n", descargar),
+            patch("fbl1n.descargar", descargar),
         ):
             codigo, _, _ = self._main(["28.10.2026", "isa", "XM"])
         self.assertEqual(codigo, 0)

@@ -20,6 +20,7 @@ USO
 
 from __future__ import annotations
 
+import importlib
 import threading
 import tkinter as tk
 import traceback
@@ -66,6 +67,11 @@ class Opcion(NamedTuple):
     descripcion: str  # texto de la card
     subtitulo: str  # subtítulo de la vista
     estilo: str  # estilo del botón de la card (ver branding._BUTTON_STYLES)
+    # Módulo de flujo que hace la descarga (None = aún sin conectar). Debe
+    # cumplir el contrato: validar_configuracion(), get_sap_session() y
+    # descargar(session, sociedades, [fecha_clave=...], progreso=...).
+    modulo: str | None = None
+    usa_fecha_clave: bool = False  # si la vista pide fecha clave
 
 
 # En el orden del proceso: el maestro de cuentas (3) alimenta a FAGLL03 (4).
@@ -77,6 +83,8 @@ OPCIONES: tuple[Opcion, ...] = (
         descripcion="Descarga las partidas abiertas\nde proveedores por sociedad.",
         subtitulo="Partidas abiertas de acreedores (FBL1N)",
         estilo="primary",
+        modulo="fbl1n",
+        usa_fecha_clave=True,
     ),
     Opcion(
         clave="deudores",
@@ -85,6 +93,8 @@ OPCIONES: tuple[Opcion, ...] = (
         descripcion="Descarga las partidas abiertas\nde clientes por sociedad.",
         subtitulo="Partidas abiertas de deudores (FBL5N)",
         estilo="primary",
+        modulo="fbl5n",
+        usa_fecha_clave=True,
     ),
     Opcion(
         clave="maestro_cuentas",
@@ -93,6 +103,7 @@ OPCIONES: tuple[Opcion, ...] = (
         descripcion="Lista el plan de cuentas e identifica\nlas cuentas con partidas abiertas.",
         subtitulo="Plan de cuentas por sociedad (Y_FI_GRL_004)",
         estilo="acento",
+        modulo="y_fi_grl_004",
     ),
     Opcion(
         clave="partidas_mayor",
@@ -383,28 +394,33 @@ def _sociedades_marcadas(variables: dict[str, tk.BooleanVar]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _descargar_fbl1n_handler(
+def _descargar_handler(
     root: tk.Tk,
+    opcion: Opcion,
     sociedades: list[str],
-    fecha_clave: date,
+    fecha_clave: date | None,
     status_var: tk.StringVar,
     button: tk.Widget,
     btn_atras: tk.Widget,
 ) -> None:
-    """Valida, confirma y descarga FBL1N en un thread (la GUI no se congela).
+    """Valida, confirma y corre la descarga de `opcion` en un thread (la GUI
+    no se congela).
 
-    Acción y Atrás quedan deshabilitados mientras corre: salir a mitad de
-    la descarga dejaría SAP en una pantalla intermedia.
+    El módulo de flujo se importa aquí y no arriba, para que la GUI arranque
+    aunque un flujo tenga un problema. Acción y Atrás quedan deshabilitados
+    mientras corre: salir a mitad de la descarga dejaría SAP en una
+    pantalla intermedia.
     """
+    transaccion = opcion.transaccion
     try:
-        import fbl1n
+        flujo = importlib.import_module(opcion.modulo)
     except ImportError as exc:
-        messagebox.showerror("Error de import", f"No se pudo importar fbl1n:\n{exc}")
+        messagebox.showerror("Error de import", f"No se pudo importar {opcion.modulo}:\n{exc}")
         return
     try:
         socs = validar_sociedades(sociedades)
-        fecha = validar_fecha_clave(fecha_clave)
-        fbl1n.validar_disposicion()
+        fecha = validar_fecha_clave(fecha_clave) if opcion.usa_fecha_clave else None
+        flujo.validar_configuracion()
     except ValueError as exc:
         messagebox.showerror("Datos inválidos", str(exc))
         return
@@ -413,14 +429,16 @@ def _descargar_fbl1n_handler(
         texto_sociedades = f"todas las sociedades ({len(socs)})"
     else:
         texto_sociedades = f"{len(socs)} sociedad(es): {', '.join(socs)}"
+    texto_fecha = f", con fecha clave {fecha:%d.%m.%Y}" if fecha else ""
     if not messagebox.askyesno(
-        "Confirmar descarga de FBL1N",
-        f"Se descargará FBL1N de {texto_sociedades}, con fecha clave {fecha:%d.%m.%Y}.\n\n"
+        f"Confirmar descarga de {transaccion}",
+        f"Se descargará {transaccion} de {texto_sociedades}{texto_fecha}.\n\n"
         "La app usa el portapapeles: se reemplazará lo que tengas copiado.\n"
         "Ten SAP abierto y no lo uses mientras corre la descarga.\n\n"
         "¿Continuar?",
     ):
         return
+    argumentos_fecha = {"fecha_clave": fecha} if opcion.usa_fecha_clave else {}
 
     button.config(state="disabled")
     btn_atras.config(state="disabled")
@@ -446,12 +464,14 @@ def _descargar_fbl1n_handler(
     def worker() -> None:
         with com_apartment():
             try:
-                session = fbl1n.get_sap_session()
-                carpeta, nombre = fbl1n.descargar_fbl1n(session, socs, fecha, progreso=progreso)
+                session = flujo.get_sap_session()
+                carpeta, nombre = flujo.descargar(
+                    session, socs, progreso=progreso, **argumentos_fecha
+                )
                 show_info("Descarga completada", f"Archivo guardado en:\n{Path(carpeta) / nombre}")
             except Exception as exc:
-                logger.exception("Falló la descarga de FBL1N")
-                show_error("Error en la descarga de FBL1N", str(exc))
+                logger.exception("Falló la descarga de %s", transaccion)
+                show_error(f"Error en la descarga de {transaccion}", str(exc))
             finally:
                 reenable()
 
@@ -503,12 +523,12 @@ def _opcion(clave: str) -> Opcion:
     return next(o for o in OPCIONES if o.clave == clave)
 
 
-def abrir_acreedores(root: tk.Tk, parent_frame: tk.Frame) -> tk.Frame:
-    """Vista de FBL1N: sociedades, fecha clave y "Descargar FBL1N".
+def _crear_vista_descarga(root: tk.Tk, parent_frame: tk.Frame, opcion: Opcion) -> tk.Frame:
+    """Vista de una opción conectada a SAP: sociedades, fecha clave (si la
+    opción la usa) y "Descargar <transacción>".
 
     Entrega el archivo tal como lo exporta SAP en `salida/`.
     """
-    opcion = _opcion("acreedores")
     parent_frame.pack_forget()
     frame = tk.Frame(root, bg=branding.COLOR_FONDO)
     btn_atras = _crear_header_form(
@@ -518,29 +538,32 @@ def abrir_acreedores(root: tk.Tk, parent_frame: tk.Frame) -> tk.Frame:
     panel = _crear_panel_card(frame)
     vars_sociedades, btn_todas, btn_ninguna = _crear_selector_sociedades(panel)
 
-    fila_fecha = tk.Frame(panel, bg=branding.COLOR_BLANCO)
-    fila_fecha.pack(pady=(12, 4))
-    tk.Label(
-        fila_fecha,
-        text="Fecha clave",
-        font=("Helvetica", 10, "bold"),
-        fg=branding.COLOR_PRIMARIO,
-        bg=branding.COLOR_BLANCO,
-    ).pack(side="left", padx=(0, 8))
-    # Sin validate="key": en un DateEntry rompe la selección desde el
-    # calendario (bug real en activos-propios-py).
-    entry_fecha = DateEntry(fila_fecha, date_pattern="dd.mm.yyyy", locale="es_CO", width=12)
-    entry_fecha.pack(side="left")
+    entry_fecha = None
+    if opcion.usa_fecha_clave:
+        fila_fecha = tk.Frame(panel, bg=branding.COLOR_BLANCO)
+        fila_fecha.pack(pady=(12, 4))
+        tk.Label(
+            fila_fecha,
+            text="Fecha clave",
+            font=("Helvetica", 10, "bold"),
+            fg=branding.COLOR_PRIMARIO,
+            bg=branding.COLOR_BLANCO,
+        ).pack(side="left", padx=(0, 8))
+        # Sin validate="key": en un DateEntry rompe la selección desde el
+        # calendario (bug real en activos-propios-py).
+        entry_fecha = DateEntry(fila_fecha, date_pattern="dd.mm.yyyy", locale="es_CO", width=12)
+        entry_fecha.pack(side="left")
 
     status_var = tk.StringVar(master=frame, value="")
     btn_descargar = branding.RoundedButton(
-        panel, text="Descargar FBL1N", style="primary", width=220
+        panel, text=f"Descargar {opcion.transaccion}", style="primary", width=220
     )
     btn_descargar.config(
-        command=lambda: _descargar_fbl1n_handler(
+        command=lambda: _descargar_handler(
             root,
+            opcion,
             _sociedades_marcadas(vars_sociedades),
-            entry_fecha.get_date(),
+            entry_fecha.get_date() if entry_fecha is not None else None,
             status_var,
             btn_descargar,
             btn_atras,
@@ -570,14 +593,19 @@ def abrir_acreedores(root: tk.Tk, parent_frame: tk.Frame) -> tk.Frame:
     return frame
 
 
+def abrir_acreedores(root: tk.Tk, parent_frame: tk.Frame) -> tk.Frame:
+    """Vista de FBL1N (partidas abiertas de acreedores)."""
+    return _crear_vista_descarga(root, parent_frame, _opcion("acreedores"))
+
+
 def abrir_deudores(root: tk.Tk, parent_frame: tk.Frame) -> tk.Frame:
     """Vista de FBL5N (partidas abiertas de deudores)."""
-    return _crear_vista_pendiente(root, parent_frame, _opcion("deudores"))
+    return _crear_vista_descarga(root, parent_frame, _opcion("deudores"))
 
 
 def abrir_maestro_cuentas(root: tk.Tk, parent_frame: tk.Frame) -> tk.Frame:
-    """Vista de Y_FI_GRL_004 (maestro del plan de cuentas)."""
-    return _crear_vista_pendiente(root, parent_frame, _opcion("maestro_cuentas"))
+    """Vista de Y_FI_GRL_004 (maestro del plan de cuentas; sin fecha clave)."""
+    return _crear_vista_descarga(root, parent_frame, _opcion("maestro_cuentas"))
 
 
 def abrir_partidas_mayor(root: tk.Tk, parent_frame: tk.Frame) -> tk.Frame:

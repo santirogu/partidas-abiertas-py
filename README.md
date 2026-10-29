@@ -13,24 +13,26 @@ original que exporta SAP en la carpeta `salida/`, junto al ejecutable.
 | Card | Transacción | Qué hace | Estado |
 |---|---|---|---|
 | Acreedores | FBL1N | Partidas abiertas de proveedores | ✅ Lista para probar en Windows |
-| Deudores | FBL5N | Partidas abiertas de clientes | ⏳ Esperando grabación |
-| Maestro de cuentas | Y_FI_GRL_004 | Plan de cuentas; identifica las cuentas con gestión de partidas abiertas | ⏳ Esperando grabación |
+| Deudores | FBL5N | Partidas abiertas de clientes | 🟡 Lista, falta el nombre de la disposición |
+| Maestro de cuentas | Y_FI_GRL_004 | Plan de cuentas; identifica las cuentas con gestión de partidas abiertas | ✅ Lista para probar en Windows |
 | Partidas de mayor | FAGLL03 | Partidas abiertas de esas cuentas de mayor | ⏳ Esperando grabación |
 
-### Acreedores (FBL1N)
+### Cómo se usa una opción
 
-1. Marca las sociedades (por defecto, las 28) y elige la fecha clave (por
-   defecto, hoy).
-2. Pulsa **Descargar FBL1N** y confirma. La app usa el portapapeles para
+1. Marca las sociedades (por defecto, las 28). En Acreedores y Deudores
+   elige también la fecha clave (por defecto, hoy).
+2. Pulsa **Descargar …** y confirma. La app usa el portapapeles para
    pasarle las sociedades a SAP, así que reemplaza lo que tengas copiado.
-3. No uses SAP mientras corre. Al terminar, el archivo queda en
-   `salida/FBL1N_AAAAMMDD_HHMMSS.xlsx`.
+3. No uses SAP mientras corre. Al terminar, el archivo queda en `salida/`
+   con el nombre de la transacción y la hora, p. ej.
+   `salida/FBL1N_20261028_153000.xlsx`.
 
-También se puede correr desde la terminal:
+También se puede correr cada opción desde la terminal:
 
 ```bash
-python src/fbl1n.py 28.10.2026            # todas las sociedades
-python src/fbl1n.py 28.10.2026 ISA XM     # solo ISA y XM
+python src/fbl1n.py 28.10.2026            # FBL1N, todas las sociedades
+python src/fbl5n.py 28.10.2026 ISA XM     # FBL5N, solo ISA y XM
+python src/y_fi_grl_004.py                # maestro de cuentas, todas
 ```
 
 Códigos de salida: 0 = OK, 1 = error (datos o SAP), 2 = uso incorrecto.
@@ -66,10 +68,12 @@ reemplaza por `tests/helpers.MockSession`.
 
 | Archivo | Tests | Qué cubre |
 |---|---|---|
-| `test_comun.py` | 52 | Validaciones, logging, conexión a SAP, COM, portapapeles, selección múltiple, calendario, disposición por nombre, exportar, archivos |
-| `test_main.py` | 38 | Ventana, menú 2×2, navegación, vista y handler de Acreedores, footer, errores, splash |
+| `test_comun.py` | 59 | Validaciones, logging, conexión a SAP, COM, portapapeles, selección múltiple, calendario, disposición por nombre, exportar, cierre de la exportación, archivos |
+| `test_main.py` | 44 | Ventana, menú 2×2, contrato de los módulos de flujo, vistas de descarga, handler, footer, errores, splash |
 | `test_fbl1n.py` | 20 | Cada paso de FBL1N, orden del flujo completo, validaciones, CLI |
 | `test_branding.py` | 17 | `RoundedButton` (estilos, estado, `invoke`, reconfiguración) y logo |
+| `test_fbl5n.py` | 12 | Cada paso de FBL5N, orden del flujo, disposición pendiente, CLI |
+| `test_y_fi_grl_004.py` | 10 | Cada paso del maestro de cuentas, orden del flujo (sin fecha ni disposición), CLI |
 | `test_paths.py` | 7 | Rutas en modo dev y empaquetado |
 
 ## Estructura
@@ -80,6 +84,8 @@ partidas-abiertas-py/
 │   ├── main.py        # GUI: menú, vistas, handlers, arranque
 │   ├── comun.py       # catálogo, logging, conexión SAP, pasos y archivos compartidos
 │   ├── fbl1n.py       # flujo FBL1N (acreedores)
+│   ├── fbl5n.py       # flujo FBL5N (deudores)
+│   ├── y_fi_grl_004.py  # flujo Y_FI_GRL_004 (maestro de cuentas)
 │   ├── branding.py    # paleta, logo, RoundedButton
 │   └── paths.py       # rutas dev/empaquetado
 ├── tests/             # un test_<modulo>.py por módulo + helpers.py

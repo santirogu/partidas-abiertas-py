@@ -69,16 +69,55 @@ subtotales y totales. La columna "Ejercicio" aparece dos veces (la
 segunda casi vacía; pendiente saber qué campo es). Como la app entrega el
 archivo tal cual, nada de esto afecta al flujo.
 
-## FBL5N — Partidas abiertas de deudores ⏳ esperando grabación nueva
+## FBL5N — Partidas abiertas de deudores ✅ implementado (falta la disposición)
 
-Grabación vieja: `wnd[0]/usr/chkX_NORM` y `chkX_SHBV` marcados,
-`ctxtDD_KUNNR-LOW = "*"`, `ctxtDD_BUKRS-LOW = "*"`, disposición por fila
-(**168**), exportar y confirmar con `wnd[1]/tbar[0]/btn[0]`.
+Grabación del 2026-10-28 (`FBL5N.vbs`). Módulo: `src/fbl5n.py`. Es la
+**misma secuencia que FBL1N** con los campos de deudor:
 
-## Y_FI_GRL_004 — Maestro del plan de cuentas ⏳ esperando grabación nueva
+| Paso | Grabación | En la app |
+|---|---|---|
+| 1 | `okcd = "fbl5n"` + Enter | `abrir_transaccion` con `/nFBL5N` |
+| 2 | `btn%_DD_KUNNR_%_APP_%-VALU_PUSH` → `…SLOW_I[1,0] = "*"` → `btn[8]` | `seleccionar_deudores` |
+| 3 | `btn%_DD_BUKRS_%_APP_%-VALU_PUSH` → `btn[16]` → `btn[24]` → `btn[8]` | `seleccionar_sociedades` (portapapeles) |
+| 4 | `ctxtPA_STIDA` + F4 → calendario `selectionInterval` | `fijar_fecha_clave` |
+| 5 | `chkX_NORM = true`, `chkX_SHBV = true` | `marcar_clases_de_partida` |
+| 6 | `btn[8]` | `ejecutar_reporte` |
+| 7 | `btn[33]` → fila **169** | `elegir_disposicion(fbl5n.DISPOSICION)` por nombre |
+| 8 | `menu[0]/menu[3]/menu[1]` → `DY_PATH` → `btn[0]` | `exportar_hoja_calculo` → `FBL5N_AAAAMMDD_HHMMSS.xlsx` |
 
-Grabación vieja: `ctxtSD_KTOPL-LOW = "*"`, `ctxtSD_BUKRS-LOW = "*"`,
-ejecutar, exportar sin elegir disposición.
+**Pendiente:** el nombre de la disposición (`fbl5n.DISPOSICION`). Mientras
+falte, la app avisa y no se conecta a SAP.
+
+**Export de ejemplo** (`EXPORT_20261028_224456_FBL5N.XLSX`, 3,7 MB): una
+hoja, 27 columnas (distintas de las de FBL1N: trae vencimiento neto y
+demora), 28.538 partidas de 23 sociedades más 7 filas de totales.
+
+## Y_FI_GRL_004 — Maestro del plan de cuentas ✅ implementado
+
+Grabación del 2026-10-28 (en la carpeta de red se llama
+`EXPORT_20261028_225628_Y_FI_GRL_004.vbs`). Módulo: `src/y_fi_grl_004.py`.
+No usa fecha clave ni disposición.
+
+| Paso | Grabación | En la app |
+|---|---|---|
+| 1 | `okcd = "Y_FI_GRL_004"` + Enter | `abrir_transaccion` con `/nY_FI_GRL_004` |
+| 2 | `ctxtSD_KTOPL-LOW = "*"` | `seleccionar_planes_de_cuentas` |
+| 3 | `btn%_SD_BUKRS_%_APP_%-VALU_PUSH` → `btn[24]` → `btn[8]` | `seleccionar_sociedades`; la app además borra antes (`btn[16]`, mismo diálogo que FBL1N/FBL5N) |
+| 4 | `btn[8]` | `ejecutar_reporte` |
+| 5 | `menu[0]/menu[3]/menu[1]` → `DY_PATH` → `btn[0]` | `exportar_hoja_calculo` → `Y_FI_GRL_004_AAAAMMDD_HHMMSS.xlsx` |
+
+**Export de ejemplo** (`EXPORT_20261028_225628_Y_FI_GRL_004.XLSX`,
+5,7 MB): una hoja, 41 columnas, 42.158 cuentas de 28 sociedades, sin
+subtotales. La columna **PI** (gestión de partidas abiertas) tiene `X` en
+30.097 filas.
+
+**Notas:**
+
+- Al no elegir disposición, las columnas salen con la disposición por
+  defecto de cada usuario. Si otro usuario tiene otra por defecto, su
+  archivo puede traer otras columnas.
+- La reunión propuso excluir el plan de cuentas consolidado **001** para
+  aligerar la extracción; la grabación usa `*` y la app hace lo mismo.
 
 ## FAGLL03 — Partidas abiertas de cuentas de mayor ⏳ esperando grabación nueva
 
@@ -87,7 +126,7 @@ selección múltiple de `SD_SAKNR` (`btn[24]` → `btn[8]`), todas las
 sociedades (`ctxtSD_BUKRS-LOW = ""`), disposición por fila (**473**).
 La lista de cuentas sale del maestro (paso 2 del proceso).
 
-## Cómo regrabar las que faltan
+## Cómo grabar FAGLL03
 
 - Entrar con `/n` + transacción.
 - Escribir la sociedad y la fecha clave, aunque sean los valores de siempre.
