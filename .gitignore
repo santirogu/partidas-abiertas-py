@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.ruff_cache/
+
+# Todo lo que genera la app (exports de SAP, Excel procesados y logs)
+salida/
+
+# Exports reales de SAP usados como ejemplo: pueden traer datos
+# financieros, así que no se versionan.
+resources/ejemplos/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Artefactos de PyInstaller
+build/
+dist/
+*.spec.bak

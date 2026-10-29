@@ -1,0 +1,48 @@
+# Metadatos del proyecto y configuración de herramientas.
+#
+# No es un paquete instalable (los módulos viven planos en src/ y se
+# empaquetan con PyInstaller), por eso no hay [build-system]. Las
+# dependencias se instalan con `pip install -r requirements-dev.txt`;
+# los requirements*.txt se mantienen sincronizados con esta lista.
+
+[project]
+name = "partidas-abiertas-py"
+version = "0.1.0"
+description = "Automatiza la descarga de partidas abiertas desde SAP (FBL1N, FBL5N, Y_FI_GRL_004 y FAGLL03) y su análisis de antigüedad."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = [
+    "openpyxl>=3.1",
+    "tkcalendar>=1.6",
+    "Pillow>=10.0",
+    "pywin32>=306; platform_system == 'Windows'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pyinstaller>=6.0",
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Los tests agregan tests/ al sys.path antes de importar `helpers`
+# (que a su vez agrega src/), así que sus imports van después de código.
+"tests/*" = ["E402"]
+
+[tool.ruff.lint.isort]
+# `helpers` debe importarse ANTES que los módulos de src/: es quien
+# agrega src/ al sys.path. Con una sección propia, isort nunca lo
+# reordena detrás de `branding`, `comun`, etc.
+section-order = ["future", "standard-library", "third-party", "testing", "first-party", "local-folder"]
+
+[tool.ruff.lint.isort.sections]
+testing = ["helpers"]
