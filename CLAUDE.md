@@ -29,7 +29,7 @@ carpeta de red `//192.168.68.116/Compartida` (montada en
 | 0. Fichas de los flujos | ✅ `docs/fichas-flujos.md` |
 | 1. Esqueleto | ✅ paths, branding, comun, helpers de tests, pyproject + ruff |
 | 2. GUI base | ✅ menú 2×2, 4 vistas pendientes con "← Atrás", footer, errores, splash |
-| 3. Flujos | 🟡 FBL1N, FBL5N (ambos con `/PARTABIERTA`) y Y_FI_GRL_004 implementados; ninguno probado aún en Windows. FAGLL03 espera grabación nueva (usará también `/PARTABIERTA`) |
+| 3. Flujos | 🟡 Los 4 implementados (FBL1N, FBL5N y FAGLL03 con `/PARTABIERTA`; Y_FI_GRL_004 sin disposición); ninguno probado aún en Windows con SAP real |
 | 4. Empaquetado | — |
 | 5. Docs y skills | — |
 | 6. Extras (cobertura, CI, lockfile) | — |
@@ -47,7 +47,7 @@ Python 3.11 y 3.12 de Homebrew **no** traen Tk; el 3.11 de python.org sí
 
 ```
 src/
-  main.py      GUI: OPCIONES (con modulo/usa_fecha_clave), VISTAS,
+  main.py      GUI: OPCIONES (con modulo/usa_fecha_clave/requiere), VISTAS,
                _crear_vista_descarga, _descargar_handler, construir_menu,
                crear_app, main
   comun.py     TITULO_APP, TITULAR, SOCIEDADES, validar_*, logging,
@@ -55,10 +55,11 @@ src/
                copiar_al_portapapeles, pasos de SAP compartidos
                (abrir_transaccion, selección múltiple, calendario,
                elegir_disposicion, exportar_hoja_calculo, volver_al_inicio,
-               terminar_exportacion), utilidades de archivos
+               terminar_exportacion), buscar_ultimo_export, utilidades de archivos
   fbl1n.py     flujo FBL1N (acreedores)        ┐ contrato de módulo de flujo:
   fbl5n.py     flujo FBL5N (deudores)          │ TRANSACCION, validar_configuracion(),
-  y_fi_grl_004.py  maestro de cuentas          ┘ get_sap_session(), descargar(...), main()
+  y_fi_grl_004.py  maestro de cuentas          │ get_sap_session(), descargar(...), main()
+  fagll03.py   partidas de mayor               ┘ + leer_cuentas_partidas_abiertas (maestro)
   branding.py  paleta COLOR_*, cargar_logo, RoundedButton
   paths.py     PROJECT_ROOT, SALIDA_DIR, LOGS_DIR, bundled_resource_path
 tests/
@@ -78,10 +79,11 @@ usuario.
 
 ```bash
 .venv/bin/python src/main.py
-.venv/bin/python -m unittest discover tests -v       # 170 tests
+.venv/bin/python -m unittest discover tests -v       # 195 tests
 .venv/bin/python src/fbl1n.py 28.10.2026 [ISA XM]    # CLI (solo Windows con SAP)
 .venv/bin/python src/fbl5n.py 28.10.2026 [ISA XM]
 .venv/bin/python src/y_fi_grl_004.py [ISA XM]
+.venv/bin/python src/fagll03.py 28.10.2026 [ISA XM]  # usa el último maestro de salida/
 .venv/bin/python -m unittest tests.test_comun -v
 .venv/bin/ruff check src tests && .venv/bin/ruff format src tests
 ```
@@ -142,6 +144,17 @@ usuario.
   así no se cuela una sociedad por defecto.
 - **Y_FI_GRL_004 no elige disposición** (la grabación tampoco): sale con
   la disposición por defecto de cada usuario.
+- **FAGLL03 toma las cuentas del maestro.** La grabación pega una lista de
+  cuentas desde el portapapeles; la app la arma con el
+  `Y_FI_GRL_004_*.xlsx` más reciente de `salida/`: filas con `PI = X` y
+  sociedad entre las elegidas (la gestión de partidas abiertas es por
+  sociedad). Se lee antes de tocar SAP. Validado con los ejemplos: las 383
+  cuentas con partidas en FAGLL03 tienen PI = X en el maestro. Con las 28
+  sociedades son ~15.466 cuentas: falta confirmar en Windows que SAP
+  acepte pegar tantas.
+- **`Opcion.requiere`** declara qué opción debe descargarse antes. La
+  vista muestra el archivo que usará y deshabilita el botón si falta; se
+  evalúa al abrir la vista (sin polling).
 - **`helpers` tiene su propia sección en isort** (`pyproject.toml`): es
   quien agrega `src/` al `sys.path`, así que debe importarse antes que
   cualquier módulo del proyecto.

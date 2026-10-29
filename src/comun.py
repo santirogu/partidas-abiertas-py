@@ -582,6 +582,17 @@ def nombre_con_timestamp(
     return f"{prefijo}_{momento:%Y%m%d_%H%M%S}.{extension.lstrip('.')}"
 
 
+def buscar_ultimo_export(prefijo: str, carpeta: Path) -> Path | None:
+    """El `prefijo_AAAAMMDD_HHMMSS.xlsx` más reciente de `carpeta`, o `None`.
+
+    El timestamp del nombre hace que el orden alfabético sea el cronológico.
+    """
+    if not carpeta.is_dir():
+        return None
+    archivos = sorted(carpeta.glob(f"{prefijo}_????????_??????.xlsx"))
+    return archivos[-1] if archivos else None
+
+
 def archivo_esta_bloqueado(archivo: Path) -> bool:
     """True si otro proceso (típicamente Excel) tiene el archivo abierto.
 

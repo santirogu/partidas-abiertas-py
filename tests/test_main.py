@@ -3,6 +3,7 @@
 import importlib
 import inspect
 import sys
+import tempfile
 import tkinter as tk
 import types
 import unittest
@@ -55,12 +56,13 @@ class OpcionesTest(unittest.TestCase):
             with self.subTest(clave=opcion.clave):
                 self.assertIn(opcion.estilo, branding._BUTTON_STYLES)
 
-    def test_connected_modules_follow_the_flow_contract(self) -> None:
+    def test_modules_follow_the_flow_contract(self) -> None:
         """La GUI llama a cualquier flujo de la misma forma: si un módulo
         no cumple el contrato, el error saldría recién al usar el botón."""
-        conectadas = [o for o in main.OPCIONES if o.modulo]
-        self.assertEqual([o.modulo for o in conectadas], ["fbl1n", "fbl5n", "y_fi_grl_004"])
-        for opcion in conectadas:
+        self.assertEqual(
+            [o.modulo for o in main.OPCIONES], ["fbl1n", "fbl5n", "y_fi_grl_004", "fagll03"]
+        )
+        for opcion in main.OPCIONES:
             with self.subTest(modulo=opcion.modulo):
                 flujo = importlib.import_module(opcion.modulo)
                 self.assertEqual(flujo.TRANSACCION, opcion.transaccion)
@@ -69,6 +71,17 @@ class OpcionesTest(unittest.TestCase):
                 parametros = inspect.signature(flujo.descargar).parameters
                 self.assertIn("progreso", parametros)
                 self.assertEqual("fecha_clave" in parametros, opcion.usa_fecha_clave)
+
+    def test_required_options_exist_and_come_before(self) -> None:
+        """FAGLL03 necesita el maestro: la opción requerida debe existir y
+        aparecer antes en el menú (el orden del proceso)."""
+        claves = [o.clave for o in main.OPCIONES]
+        for opcion in main.OPCIONES:
+            if opcion.requiere:
+                with self.subTest(clave=opcion.clave):
+                    self.assertIn(opcion.requiere, claves)
+                    self.assertLess(claves.index(opcion.requiere), claves.index(opcion.clave))
+        self.assertEqual(main._opcion("partidas_mayor").requiere, "maestro_cuentas")
 
 
 class CrearAppTest(unittest.TestCase):
@@ -156,13 +169,6 @@ class VistasTest(_TkTestCase):
                 frame.btn_atras.invoke()
                 self.assertFalse(frame.winfo_exists())
                 self.assertEqual(self.parent.winfo_manager(), "pack")
-
-    def test_pending_view_names_its_transaction(self) -> None:
-        frame = main.abrir_partidas_mayor(self.root, self.parent)
-        try:
-            self.assertIn("FAGLL03", frame.lbl_pendiente.cget("text"))
-        finally:
-            frame.btn_atras.invoke()
 
 
 class CardVisualTest(_TkTestCase):
@@ -267,20 +273,29 @@ class CerrarSplashTest(unittest.TestCase):
 
 
 class VistaDescargaTest(_TkTestCase):
-    """Vistas conectadas a SAP: Acreedores, Deudores y Maestro de cuentas."""
+    """Vistas de descarga de las 4 opciones."""
 
     def setUp(self) -> None:
         super().setUp()
         self.root._logo_ref = None
         self.parent = tk.Frame(self.root)
         self.parent.pack(fill="both", expand=True)
+        self._tmp = tempfile.TemporaryDirectory()
+        self.salida = Path(self._tmp.name)
+        self._salida = patch("main.SALIDA_DIR", self.salida)
+        self._salida.start()
+
+    def tearDown(self) -> None:
+        self._salida.stop()
+        self._tmp.cleanup()
+        super().tearDown()
 
     def _abrir(self, clave: str) -> tk.Frame:
         frame = main.VISTAS[clave](self.root, self.parent)
         return frame
 
     def test_all_companies_checked_by_default(self) -> None:
-        for clave in ("acreedores", "deudores", "maestro_cuentas"):
+        for clave in main.VISTAS:
             with self.subTest(clave=clave):
                 frame = self._abrir(clave)
                 self.assertEqual(list(frame.vars_sociedades), list(comun.SOCIEDADES))
@@ -306,6 +321,7 @@ class VistaDescargaTest(_TkTestCase):
             ("acreedores", True),
             ("deudores", True),
             ("maestro_cuentas", False),
+            ("partidas_mayor", True),
         ):
             with self.subTest(clave=clave):
                 frame = self._abrir(clave)
@@ -341,6 +357,25 @@ class VistaDescargaTest(_TkTestCase):
         with patch("main._descargar_handler") as handler:
             frame.btn_descargar.invoke()
         self.assertIsNone(handler.call_args[0][3])
+
+    def test_only_fagll03_shows_a_required_file(self) -> None:
+        for clave in ("acreedores", "deudores", "maestro_cuentas"):
+            with self.subTest(clave=clave):
+                frame = self._abrir(clave)
+                self.assertIsNone(frame.lbl_requisito)
+                frame.btn_atras.invoke()
+
+    def test_fagll03_without_master_disables_download(self) -> None:
+        frame = self._abrir("partidas_mayor")
+        self.assertEqual(frame.btn_descargar.cget("state"), "disabled")
+        self.assertIn("Falta el maestro de cuentas", frame.lbl_requisito.cget("text"))
+
+    def test_fagll03_names_the_latest_master(self) -> None:
+        for nombre in ("Y_FI_GRL_004_20261027_090000.xlsx", "Y_FI_GRL_004_20261028_225628.xlsx"):
+            (self.salida / nombre).write_bytes(b"x")
+        frame = self._abrir("partidas_mayor")
+        self.assertEqual(frame.btn_descargar.cget("state"), "normal")
+        self.assertIn("Y_FI_GRL_004_20261028_225628.xlsx", frame.lbl_requisito.cget("text"))
 
 
 class DescargarHandlerTest(_TkTestCase):
@@ -402,6 +437,16 @@ class DescargarHandlerTest(_TkTestCase):
             self._llamar(clave="deudores")
         mock_ask.assert_not_called()
         self.assertIn("FBL5N", mock_err.call_args[0][1])
+
+    def test_missing_master_shows_error_for_fagll03(self) -> None:
+        with (
+            patch("fagll03.validar_maestro", side_effect=ValueError("Primero descarga el Maestro")),
+            patch("main.messagebox.showerror") as mock_err,
+            patch("main.messagebox.askyesno") as mock_ask,
+        ):
+            self._llamar(clave="partidas_mayor")
+        mock_ask.assert_not_called()
+        self.assertIn("Maestro", mock_err.call_args[0][1])
 
     def test_confirmation_warns_about_clipboard_and_summarizes_companies(self) -> None:
         with patch("main.messagebox.askyesno", return_value=False) as mock_ask:

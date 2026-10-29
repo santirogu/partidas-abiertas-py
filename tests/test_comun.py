@@ -483,6 +483,30 @@ class VolverAlInicioTest(unittest.TestCase):
         comun.volver_al_inicio(session)
 
 
+class BuscarUltimoExportTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_missing_folder_returns_none(self) -> None:
+        self.assertIsNone(comun.buscar_ultimo_export("FBL1N", self.tmp / "no_existe"))
+
+    def test_returns_latest_by_timestamp_and_ignores_other_names(self) -> None:
+        for nombre in (
+            "FBL1N_20261027_090000.xlsx",
+            "FBL1N_20261028_153000.xlsx",
+            "FBL1N_copia.xlsx",  # sin timestamp: no es un export de la app
+            "FBL5N_20261029_080000.xlsx",
+        ):
+            (self.tmp / nombre).write_bytes(b"x")
+        self.assertEqual(
+            comun.buscar_ultimo_export("FBL1N", self.tmp), self.tmp / "FBL1N_20261028_153000.xlsx"
+        )
+
+
 class ValidarDisposicionTest(unittest.TestCase):
     def test_pending_layout_names_the_transaction(self) -> None:
         for valor in (None, "", "   "):

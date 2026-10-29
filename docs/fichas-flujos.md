@@ -119,18 +119,41 @@ subtotales. La columna **PI** (gestión de partidas abiertas) tiene `X` en
 - La reunión propuso excluir el plan de cuentas consolidado **001** para
   aligerar la extracción; la grabación usa `*` y la app hace lo mismo.
 
-## FAGLL03 — Partidas abiertas de cuentas de mayor ⏳ esperando grabación nueva
+## FAGLL03 — Partidas abiertas de cuentas de mayor ✅ implementado
 
-Grabación vieja: las cuentas se cargan **desde el portapapeles** en la
-selección múltiple de `SD_SAKNR` (`btn[24]` → `btn[8]`), todas las
-sociedades (`ctxtSD_BUKRS-LOW = ""`), disposición por fila (**473**).
-La lista de cuentas sale del maestro (paso 2 del proceso).
+Grabación del 2026-10-28 (en la carpeta de red se llama
+`EXPORT_20261028_232304_FAGLL03.vbs`). Módulo: `src/fagll03.py`.
 
-**Disposición:** `/PARTABIERTA`, la misma que FBL1N y FBL5N (confirmado
-por el equipo usuario el 2026-10-28, antes de tener la grabación nueva).
+| Paso | Grabación | En la app |
+|---|---|---|
+| 1 | `okcd = "FAGLL03"` + Enter | `abrir_transaccion` con `/nFAGLL03` |
+| 2 | `btn%_SD_SAKNR_%_APP_%-VALU_PUSH` → `btn[16]` → `btn[24]` → `btn[8]` | `seleccionar_cuentas`: la app copia las cuentas del maestro al portapapeles |
+| 3 | `btn%_SD_BUKRS_%_APP_%-VALU_PUSH` → `btn[16]` → `btn[24]` → `btn[8]` | `seleccionar_sociedades` (portapapeles) |
+| 4 | `ctxtPA_STIDA` + F4 → calendario `selectionInterval` | `fijar_fecha_clave` |
+| 5 | `btn[8]` | `ejecutar_reporte` |
+| 6 | `btn[33]` → fila **473** | `elegir_disposicion(fagll03.DISPOSICION)` por nombre |
+| 7 | `menu[0]/menu[3]/menu[1]` → `DY_PATH` → `btn[0]` | `exportar_hoja_calculo` → `FAGLL03_AAAAMMDD_HHMMSS.xlsx` |
 
-## Cómo grabar FAGLL03
+**Disposición:** `/PARTABIERTA`, la misma que FBL1N y FBL5N (confirmada el
+2026-10-28).
 
-- Entrar con `/n` + transacción.
-- Escribir la sociedad y la fecha clave, aunque sean los valores de siempre.
-- En el diálogo de guardado, escribir la carpeta y el nombre del archivo.
+**De dónde salen las cuentas.** La grabación pega una lista de cuentas
+desde el portapapeles. La app la arma con el export del **maestro más
+reciente** de `salida/` (`Y_FI_GRL_004_*.xlsx`): las filas con `X` en la
+columna **PI** y una de las sociedades elegidas (la gestión de partidas
+abiertas se define por sociedad). Se lee antes de tocar SAP. Por eso:
+
+- La vista muestra qué maestro va a usar y deshabilita el botón si no hay
+  ninguno.
+- Con las 28 sociedades salen **15.466 cuentas** (≈ 4 s de lectura y
+  166 KB en el portapapeles); con una sola sociedad, unas 5.700.
+- Supuesto validado con los ejemplos: las 383 cuentas con partidas en el
+  export de FAGLL03 tienen todas PI = X en el maestro.
+
+**Export de ejemplo** (`EXPORT_20261028_232304_FAGLL03.XLSX`, 34 MB): una
+hoja, 33 columnas, 238.724 partidas de 383 cuentas y 27 sociedades, más 10
+filas de totales.
+
+**A verificar en la primera prueba en Windows:** que SAP acepte pegar
+~15 mil cuentas en la selección múltiple. Si falla con todas las
+sociedades, la alternativa es descargar por grupos de sociedades.

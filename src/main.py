@@ -37,6 +37,7 @@ from comun import (
     SOCIEDADES,
     TITULAR,
     TITULO_APP,
+    buscar_ultimo_export,
     com_apartment,
     configurar_logging,
     log,
@@ -44,6 +45,7 @@ from comun import (
     validar_fecha_clave,
     validar_sociedades,
 )
+from paths import SALIDA_DIR
 
 # ---------------------------------------------------------------------------
 # CONFIGURACIÓN
@@ -67,11 +69,14 @@ class Opcion(NamedTuple):
     descripcion: str  # texto de la card
     subtitulo: str  # subtítulo de la vista
     estilo: str  # estilo del botón de la card (ver branding._BUTTON_STYLES)
-    # Módulo de flujo que hace la descarga (None = aún sin conectar). Debe
-    # cumplir el contrato: validar_configuracion(), get_sap_session() y
+    # Módulo de flujo que hace la descarga. Debe cumplir el contrato:
+    # validar_configuracion(), get_sap_session() y
     # descargar(session, sociedades, [fecha_clave=...], progreso=...).
-    modulo: str | None = None
+    modulo: str
     usa_fecha_clave: bool = False  # si la vista pide fecha clave
+    # Clave de la opción cuyo export necesita esta (FAGLL03 toma las cuentas
+    # del maestro). La vista muestra qué archivo usará.
+    requiere: str | None = None
 
 
 # En el orden del proceso: el maestro de cuentas (3) alimenta a FAGLL03 (4).
@@ -112,6 +117,9 @@ OPCIONES: tuple[Opcion, ...] = (
         descripcion="Descarga las partidas abiertas\nde las cuentas de mayor.",
         subtitulo="Partidas abiertas de cuentas de mayor (FAGLL03)",
         estilo="ok",
+        modulo="fagll03",
+        usa_fecha_clave=True,
+        requiere="maestro_cuentas",
     ),
 )
 
@@ -483,51 +491,19 @@ def _descargar_handler(
 # ---------------------------------------------------------------------------
 
 
-def _crear_vista_pendiente(root: tk.Tk, parent_frame: tk.Frame, opcion: Opcion) -> tk.Frame:
-    """Vista con el encabezado estándar y un aviso de que la opción aún no
-    está conectada a SAP.
-
-    Cada `abrir_*` la reemplaza por su formulario real en la Fase 3,
-    cuando estén las grabaciones nuevas de su transacción.
-    """
-    parent_frame.pack_forget()
-    frame = tk.Frame(root, bg=branding.COLOR_FONDO)
-    btn_atras = _crear_header_form(
-        root, frame, parent_frame, titulo=opcion.titulo, subtitulo=opcion.subtitulo
-    )
-
-    panel = _crear_panel_card(frame)
-    lbl_pendiente = tk.Label(
-        panel,
-        text=(
-            "Esta opción todavía no está conectada a SAP.\n"
-            f"Se habilita cuando estén las nuevas grabaciones de {opcion.transaccion}."
-        ),
-        font=("Helvetica", 10),
-        fg=branding.COLOR_GRIS,
-        bg=branding.COLOR_BLANCO,
-        justify="center",
-        wraplength=420,
-    )
-    lbl_pendiente.pack(padx=24, pady=24)
-
-    frame.pack(fill="both", expand=True)
-    # Exponer widgets para los tests.
-    frame.opcion = opcion
-    frame.btn_atras = btn_atras
-    frame.lbl_pendiente = lbl_pendiente
-    return frame
-
-
 def _opcion(clave: str) -> Opcion:
     return next(o for o in OPCIONES if o.clave == clave)
 
 
 def _crear_vista_descarga(root: tk.Tk, parent_frame: tk.Frame, opcion: Opcion) -> tk.Frame:
     """Vista de una opción conectada a SAP: sociedades, fecha clave (si la
-    opción la usa) y "Descargar <transacción>".
+    opción la usa), el archivo previo que necesita (si `opcion.requiere`)
+    y "Descargar <transacción>".
 
-    Entrega el archivo tal como lo exporta SAP en `salida/`.
+    Entrega el archivo tal como lo exporta SAP en `salida/`. Si falta el
+    archivo previo, el botón queda deshabilitado y la vista dice qué
+    descargar primero; se evalúa al abrir la vista, así que basta con
+    volver al menú y entrar de nuevo después de descargarlo.
     """
     parent_frame.pack_forget()
     frame = tk.Frame(root, bg=branding.COLOR_FONDO)
@@ -554,6 +530,30 @@ def _crear_vista_descarga(root: tk.Tk, parent_frame: tk.Frame, opcion: Opcion) -
         entry_fecha = DateEntry(fila_fecha, date_pattern="dd.mm.yyyy", locale="es_CO", width=12)
         entry_fecha.pack(side="left")
 
+    lbl_requisito = None
+    archivo_previo = None
+    if opcion.requiere:
+        previo = _opcion(opcion.requiere)
+        archivo_previo = buscar_ultimo_export(previo.transaccion, SALIDA_DIR)
+        if archivo_previo is not None:
+            texto = f"Usa el {previo.titulo.lower()} más reciente:\n{archivo_previo.name}"
+            color = branding.COLOR_GRIS
+        else:
+            texto = (
+                f"Falta el {previo.titulo.lower()}: descárgalo primero\n"
+                f"desde «{previo.titulo}» en el menú."
+            )
+            color = branding.COLOR_ACENTO
+        lbl_requisito = tk.Label(
+            panel,
+            text=texto,
+            font=("Helvetica", 9),
+            fg=color,
+            bg=branding.COLOR_BLANCO,
+            justify="center",
+        )
+        lbl_requisito.pack(pady=(10, 0))
+
     status_var = tk.StringVar(master=frame, value="")
     btn_descargar = branding.RoundedButton(
         panel, text=f"Descargar {opcion.transaccion}", style="primary", width=220
@@ -570,6 +570,8 @@ def _crear_vista_descarga(root: tk.Tk, parent_frame: tk.Frame, opcion: Opcion) -
         )
     )
     btn_descargar.pack(pady=(12, 16))
+    if opcion.requiere and archivo_previo is None:
+        btn_descargar.config(state="disabled")
 
     tk.Label(
         frame,
@@ -590,6 +592,7 @@ def _crear_vista_descarga(root: tk.Tk, parent_frame: tk.Frame, opcion: Opcion) -
     frame.entry_fecha = entry_fecha
     frame.btn_descargar = btn_descargar
     frame.status_var = status_var
+    frame.lbl_requisito = lbl_requisito
     return frame
 
 
@@ -609,8 +612,9 @@ def abrir_maestro_cuentas(root: tk.Tk, parent_frame: tk.Frame) -> tk.Frame:
 
 
 def abrir_partidas_mayor(root: tk.Tk, parent_frame: tk.Frame) -> tk.Frame:
-    """Vista de FAGLL03 (partidas abiertas de cuentas de mayor)."""
-    return _crear_vista_pendiente(root, parent_frame, _opcion("partidas_mayor"))
+    """Vista de FAGLL03 (partidas abiertas de cuentas de mayor; las cuentas
+    salen del maestro más reciente)."""
+    return _crear_vista_descarga(root, parent_frame, _opcion("partidas_mayor"))
 
 
 # Qué vista abre cada card del menú.
