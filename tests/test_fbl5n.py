@@ -15,14 +15,17 @@ import helpers
 import comun
 import fbl5n
 
-DISPOSICION = "/DEUDORES"  # valor de prueba: el real está pendiente
+DISPOSICION = "/PARTABIERTA"
 
 
 class ValidarConfiguracionTest(unittest.TestCase):
-    def test_layout_is_pending_until_confirmed(self) -> None:
-        """FBL5N.vbs elige la disposición por fila (169); hasta tener el
-        nombre, la app no debe conectarse a SAP."""
-        with self.assertRaises(ValueError) as ctx:
+    def test_uses_same_layout_as_fbl1n(self) -> None:
+        """El equipo usuario confirmó que FBL5N usa la misma disposición
+        que FBL1N."""
+        self.assertEqual(fbl5n.validar_configuracion(), "/PARTABIERTA")
+
+    def test_pending_layout_raises(self) -> None:
+        with patch.object(fbl5n, "DISPOSICION", None), self.assertRaises(ValueError) as ctx:
             fbl5n.validar_configuracion()
         self.assertIn("FBL5N", str(ctx.exception))
 
@@ -136,7 +139,8 @@ class MainEntryPointTest(unittest.TestCase):
         self.assertEqual(self._main([])[0], 2)
 
     def test_pending_layout_returns_1(self) -> None:
-        codigo, _, err = self._main(["28.10.2026"])
+        with patch.object(fbl5n, "DISPOSICION", None):
+            codigo, _, err = self._main(["28.10.2026"])
         self.assertEqual(codigo, 1)
         self.assertIn("disposición", err)
 

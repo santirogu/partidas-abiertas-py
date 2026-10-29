@@ -29,7 +29,7 @@ carpeta de red `//192.168.68.116/Compartida` (montada en
 | 0. Fichas de los flujos | ✅ `docs/fichas-flujos.md` |
 | 1. Esqueleto | ✅ paths, branding, comun, helpers de tests, pyproject + ruff |
 | 2. GUI base | ✅ menú 2×2, 4 vistas pendientes con "← Atrás", footer, errores, splash |
-| 3. Flujos | 🟡 FBL1N (`/PARTABIERTA`) y Y_FI_GRL_004 implementados; FBL5N implementado sin disposición (`fbl5n.DISPOSICION = None`); ninguno probado aún en Windows. FAGLL03 espera grabación nueva |
+| 3. Flujos | 🟡 FBL1N, FBL5N (ambos con `/PARTABIERTA`) y Y_FI_GRL_004 implementados; ninguno probado aún en Windows. FAGLL03 espera grabación nueva (usará también `/PARTABIERTA`) |
 | 4. Empaquetado | — |
 | 5. Docs y skills | — |
 | 6. Extras (cobertura, CI, lockfile) | — |
@@ -78,7 +78,7 @@ usuario.
 
 ```bash
 .venv/bin/python src/main.py
-.venv/bin/python -m unittest discover tests -v       # 169 tests
+.venv/bin/python -m unittest discover tests -v       # 170 tests
 .venv/bin/python src/fbl1n.py 28.10.2026 [ISA XM]    # CLI (solo Windows con SAP)
 .venv/bin/python src/fbl5n.py 28.10.2026 [ISA XM]
 .venv/bin/python src/y_fi_grl_004.py [ISA XM]

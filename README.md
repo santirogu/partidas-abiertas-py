@@ -13,7 +13,7 @@ original que exporta SAP en la carpeta `salida/`, junto al ejecutable.
 | Card | Transacción | Qué hace | Estado |
 |---|---|---|---|
 | Acreedores | FBL1N | Partidas abiertas de proveedores | ✅ Lista para probar en Windows |
-| Deudores | FBL5N | Partidas abiertas de clientes | 🟡 Lista, falta el nombre de la disposición |
+| Deudores | FBL5N | Partidas abiertas de clientes | ✅ Lista para probar en Windows |
 | Maestro de cuentas | Y_FI_GRL_004 | Plan de cuentas; identifica las cuentas con gestión de partidas abiertas | ✅ Lista para probar en Windows |
 | Partidas de mayor | FAGLL03 | Partidas abiertas de esas cuentas de mayor | ⏳ Esperando grabación |
 
@@ -72,7 +72,7 @@ reemplaza por `tests/helpers.MockSession`.
 | `test_main.py` | 44 | Ventana, menú 2×2, contrato de los módulos de flujo, vistas de descarga, handler, footer, errores, splash |
 | `test_fbl1n.py` | 20 | Cada paso de FBL1N, orden del flujo completo, validaciones, CLI |
 | `test_branding.py` | 17 | `RoundedButton` (estilos, estado, `invoke`, reconfiguración) y logo |
-| `test_fbl5n.py` | 12 | Cada paso de FBL5N, orden del flujo, disposición pendiente, CLI |
+| `test_fbl5n.py` | 13 | Cada paso de FBL5N, orden del flujo, disposición, CLI |
 | `test_y_fi_grl_004.py` | 10 | Cada paso del maestro de cuentas, orden del flujo (sin fecha ni disposición), CLI |
 | `test_paths.py` | 7 | Rutas en modo dev y empaquetado |
 

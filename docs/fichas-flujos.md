@@ -31,7 +31,7 @@ Especificación de los 4 flujos a partir de las grabaciones de
 | # | Problema | Solución en la app |
 |---|---|---|
 | 1 | La transacción se abre sin `/n` | `comun.abrir_transaccion` usa `/n` ✅ |
-| 2 | La disposición se elige por **número de fila** | `comun.elegir_disposicion` la busca por nombre en la columna `VARIANT` ✅ (FBL1N: `/PARTABIERTA`; faltan las demás) |
+| 2 | La disposición se elige por **número de fila** | `comun.elegir_disposicion` la busca por nombre en la columna `VARIANT` ✅ (`/PARTABIERTA` en FBL1N, FBL5N y FAGLL03) |
 | 3 | No se graba el nombre del archivo exportado | `comun.exportar_hoja_calculo` escribe `DY_PATH` y `DY_FILENAME` ✅ |
 | 4 | Salen con un número fijo de F3 | `comun.volver_al_inicio` usa `/n` ✅ |
 
@@ -69,7 +69,7 @@ subtotales y totales. La columna "Ejercicio" aparece dos veces (la
 segunda casi vacía; pendiente saber qué campo es). Como la app entrega el
 archivo tal cual, nada de esto afecta al flujo.
 
-## FBL5N — Partidas abiertas de deudores ✅ implementado (falta la disposición)
+## FBL5N — Partidas abiertas de deudores ✅ implementado
 
 Grabación del 2026-10-28 (`FBL5N.vbs`). Módulo: `src/fbl5n.py`. Es la
 **misma secuencia que FBL1N** con los campos de deudor:
@@ -85,8 +85,8 @@ Grabación del 2026-10-28 (`FBL5N.vbs`). Módulo: `src/fbl5n.py`. Es la
 | 7 | `btn[33]` → fila **169** | `elegir_disposicion(fbl5n.DISPOSICION)` por nombre |
 | 8 | `menu[0]/menu[3]/menu[1]` → `DY_PATH` → `btn[0]` | `exportar_hoja_calculo` → `FBL5N_AAAAMMDD_HHMMSS.xlsx` |
 
-**Pendiente:** el nombre de la disposición (`fbl5n.DISPOSICION`). Mientras
-falte, la app avisa y no se conecta a SAP.
+**Disposición:** `/PARTABIERTA`, la misma que FBL1N (`fbl5n.DISPOSICION`,
+confirmada el 2026-10-28).
 
 **Export de ejemplo** (`EXPORT_20261028_224456_FBL5N.XLSX`, 3,7 MB): una
 hoja, 27 columnas (distintas de las de FBL1N: trae vencimiento neto y
@@ -126,10 +126,11 @@ selección múltiple de `SD_SAKNR` (`btn[24]` → `btn[8]`), todas las
 sociedades (`ctxtSD_BUKRS-LOW = ""`), disposición por fila (**473**).
 La lista de cuentas sale del maestro (paso 2 del proceso).
 
+**Disposición:** `/PARTABIERTA`, la misma que FBL1N y FBL5N (confirmado
+por el equipo usuario el 2026-10-28, antes de tener la grabación nueva).
+
 ## Cómo grabar FAGLL03
 
 - Entrar con `/n` + transacción.
 - Escribir la sociedad y la fecha clave, aunque sean los valores de siempre.
-- Tener a mano el **nombre** de la disposición (columna "Disposición" del
-  diálogo "Seleccionar disposición").
 - En el diálogo de guardado, escribir la carpeta y el nombre del archivo.

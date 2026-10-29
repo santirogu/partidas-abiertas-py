@@ -16,6 +16,7 @@ import helpers
 import branding
 import comun
 import fbl1n
+import fbl5n
 import main
 import paths
 
@@ -391,8 +392,10 @@ class DescargarHandlerTest(_TkTestCase):
         self.assertEqual(mock_err.call_args[0][0], "Datos inválidos")
 
     def test_pending_layout_shows_error(self) -> None:
-        """FBL5N todavía no tiene disposición: la app avisa sin tocar SAP."""
+        """Si un flujo no tiene disposición configurada, la app avisa sin
+        tocar SAP."""
         with (
+            patch.object(fbl5n, "DISPOSICION", None),
             patch("main.messagebox.showerror") as mock_err,
             patch("main.messagebox.askyesno") as mock_ask,
         ):
