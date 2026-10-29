@@ -53,13 +53,29 @@ Códigos de salida: 0 = OK, 1 = error (datos o SAP), 2 = uso incorrecto.
 
 ## Quick start (desarrollo)
 
+**Windows** (Git Bash, por ejemplo la terminal de VS Code). En Windows el
+entorno virtual guarda los ejecutables en `.venv/Scripts/`, **no** en
+`.venv/bin/`:
+
+```bash
+py -m venv .venv
+.venv/Scripts/python -m pip install -r requirements-dev.txt
+.venv/Scripts/python src/main.py
+```
+
+Si `py` no existe, usa `python`. En PowerShell o CMD es lo mismo con
+barras invertidas: `.venv\Scripts\python`.
+
+**macOS / Linux:**
+
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python src/main.py
 ```
 
-En Windows, `.venv\Scripts\python` en lugar de `.venv/bin/python`.
+En el resto de este README los comandos usan `.venv/bin/python`; en
+Windows cámbialo por `.venv/Scripts/python`.
 
 ## Pruebas y calidad
 
