@@ -6,8 +6,9 @@ del proceso, en el orden en que se usan:
 1. Acreedores (FBL1N) y 2. Deudores (FBL5N): partidas abiertas por sociedad.
 3. Maestro de cuentas (Y_FI_GRL_004): identifica las cuentas con gestión
    de partidas abiertas.
-4. Partidas de mayor (FAGLL03): partidas abiertas de esas cuentas y su
-   antigüedad.
+4. Partidas de mayor (FAGLL03): partidas abiertas de esas cuentas.
+
+Cada opción entrega el archivo original que exporta SAP en `salida/`.
 
 Cada card abre su vista en la misma ventana (frame switching, nunca
 `Toplevel`); "← Atrás" destruye la vista y vuelve a mostrar el menú.
@@ -19,15 +20,29 @@ USO
 
 from __future__ import annotations
 
+import threading
 import tkinter as tk
 import traceback
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime
+from pathlib import Path
 from tkinter import messagebox
 from typing import NamedTuple
 
+from tkcalendar import DateEntry
+
 import branding
-from comun import TITULAR, TITULO_APP, configurar_logging, log, logger
+from comun import (
+    SOCIEDADES,
+    TITULAR,
+    TITULO_APP,
+    com_apartment,
+    configurar_logging,
+    log,
+    logger,
+    validar_fecha_clave,
+    validar_sociedades,
+)
 
 # ---------------------------------------------------------------------------
 # CONFIGURACIÓN
@@ -38,6 +53,8 @@ TAMANO_VENTANA = "620x605"
 # Todas las cards del menú miden lo mismo aunque sus textos tengan
 # distinto largo (pack_propagate(False)).
 _CARD_W, _CARD_H = 250, 170
+# Casillas de sociedades por fila en las vistas (28 sociedades → 4 filas).
+_COLUMNAS_SOCIEDADES = 7
 
 
 class Opcion(NamedTuple):
@@ -81,7 +98,7 @@ OPCIONES: tuple[Opcion, ...] = (
         clave="partidas_mayor",
         titulo="Partidas de mayor",
         transaccion="FAGLL03",
-        descripcion="Consulta las partidas abiertas de las\ncuentas de mayor y su antigüedad.",
+        descripcion="Descarga las partidas abiertas\nde las cuentas de mayor.",
         subtitulo="Partidas abiertas de cuentas de mayor (FAGLL03)",
         estilo="ok",
     ),
@@ -300,6 +317,147 @@ def _crear_header_form(
     return btn_atras
 
 
+def _crear_selector_sociedades(
+    parent: tk.Misc,
+) -> tuple[dict[str, tk.BooleanVar], branding.RoundedButton, branding.RoundedButton]:
+    """Casillas con las sociedades del catálogo (todas marcadas) y los
+    botones "Todas" / "Ninguna".
+
+    Returns:
+        `(variables, btn_todas, btn_ninguna)`; `variables` va de sociedad a
+        su `BooleanVar`.
+    """
+    variables = {s: tk.BooleanVar(master=parent, value=True) for s in SOCIEDADES}
+
+    def marcar(valor: bool) -> None:
+        for var in variables.values():
+            var.set(valor)
+
+    cabecera = tk.Frame(parent, bg=branding.COLOR_BLANCO)
+    cabecera.pack(fill="x", padx=16, pady=(14, 4))
+    tk.Label(
+        cabecera,
+        text="Sociedades",
+        font=("Helvetica", 10, "bold"),
+        fg=branding.COLOR_PRIMARIO,
+        bg=branding.COLOR_BLANCO,
+    ).pack(side="left")
+    btn_ninguna = branding.RoundedButton(
+        cabecera, text="Ninguna", style="tertiary", padx=6, pady=1, command=lambda: marcar(False)
+    )
+    btn_ninguna.pack(side="right")
+    btn_todas = branding.RoundedButton(
+        cabecera, text="Todas", style="tertiary", padx=6, pady=1, command=lambda: marcar(True)
+    )
+    btn_todas.pack(side="right")
+
+    casillas = tk.Frame(parent, bg=branding.COLOR_BLANCO)
+    casillas.pack(padx=16)
+    for indice, sociedad in enumerate(SOCIEDADES):
+        tk.Checkbutton(
+            casillas,
+            text=sociedad,
+            variable=variables[sociedad],
+            font=("Helvetica", 9),
+            fg=branding.COLOR_GRIS,
+            bg=branding.COLOR_BLANCO,
+            activebackground=branding.COLOR_BLANCO,
+            highlightthickness=0,
+            anchor="w",
+            width=6,
+        ).grid(
+            row=indice // _COLUMNAS_SOCIEDADES,
+            column=indice % _COLUMNAS_SOCIEDADES,
+            sticky="w",
+            padx=2,
+        )
+    return variables, btn_todas, btn_ninguna
+
+
+def _sociedades_marcadas(variables: dict[str, tk.BooleanVar]) -> list[str]:
+    return [s for s, var in variables.items() if var.get()]
+
+
+# ---------------------------------------------------------------------------
+# HANDLERS
+# ---------------------------------------------------------------------------
+
+
+def _descargar_fbl1n_handler(
+    root: tk.Tk,
+    sociedades: list[str],
+    fecha_clave: date,
+    status_var: tk.StringVar,
+    button: tk.Widget,
+    btn_atras: tk.Widget,
+) -> None:
+    """Valida, confirma y descarga FBL1N en un thread (la GUI no se congela).
+
+    Acción y Atrás quedan deshabilitados mientras corre: salir a mitad de
+    la descarga dejaría SAP en una pantalla intermedia.
+    """
+    try:
+        import fbl1n
+    except ImportError as exc:
+        messagebox.showerror("Error de import", f"No se pudo importar fbl1n:\n{exc}")
+        return
+    try:
+        socs = validar_sociedades(sociedades)
+        fecha = validar_fecha_clave(fecha_clave)
+        fbl1n.validar_disposicion()
+    except ValueError as exc:
+        messagebox.showerror("Datos inválidos", str(exc))
+        return
+
+    if len(socs) == len(SOCIEDADES):
+        texto_sociedades = f"todas las sociedades ({len(socs)})"
+    else:
+        texto_sociedades = f"{len(socs)} sociedad(es): {', '.join(socs)}"
+    if not messagebox.askyesno(
+        "Confirmar descarga de FBL1N",
+        f"Se descargará FBL1N de {texto_sociedades}, con fecha clave {fecha:%d.%m.%Y}.\n\n"
+        "La app usa el portapapeles: se reemplazará lo que tengas copiado.\n"
+        "Ten SAP abierto y no lo uses mientras corre la descarga.\n\n"
+        "¿Continuar?",
+    ):
+        return
+
+    button.config(state="disabled")
+    btn_atras.config(state="disabled")
+    status_var.set("Conectando con SAP…")
+
+    def progreso(texto: str) -> None:
+        root.after(0, lambda: status_var.set(texto))
+
+    def show_info(title: str, msg: str) -> None:
+        root.after(0, lambda: messagebox.showinfo(title, msg))
+
+    def show_error(title: str, msg: str) -> None:
+        root.after(0, lambda: messagebox.showerror(title, msg))
+
+    def reenable() -> None:
+        def _do() -> None:
+            button.config(state="normal")
+            btn_atras.config(state="normal")
+            status_var.set("")
+
+        root.after(0, _do)
+
+    def worker() -> None:
+        with com_apartment():
+            try:
+                session = fbl1n.get_sap_session()
+                carpeta, nombre = fbl1n.descargar_fbl1n(session, socs, fecha, progreso=progreso)
+                show_info("Descarga completada", f"Archivo guardado en:\n{Path(carpeta) / nombre}")
+            except Exception as exc:
+                logger.exception("Falló la descarga de FBL1N")
+                show_error("Error en la descarga de FBL1N", str(exc))
+            finally:
+                reenable()
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
 # ---------------------------------------------------------------------------
 # VISTAS
 # ---------------------------------------------------------------------------
@@ -346,8 +504,70 @@ def _opcion(clave: str) -> Opcion:
 
 
 def abrir_acreedores(root: tk.Tk, parent_frame: tk.Frame) -> tk.Frame:
-    """Vista de FBL1N (partidas abiertas de acreedores)."""
-    return _crear_vista_pendiente(root, parent_frame, _opcion("acreedores"))
+    """Vista de FBL1N: sociedades, fecha clave y "Descargar FBL1N".
+
+    Entrega el archivo tal como lo exporta SAP en `salida/`.
+    """
+    opcion = _opcion("acreedores")
+    parent_frame.pack_forget()
+    frame = tk.Frame(root, bg=branding.COLOR_FONDO)
+    btn_atras = _crear_header_form(
+        root, frame, parent_frame, titulo=opcion.titulo, subtitulo=opcion.subtitulo
+    )
+
+    panel = _crear_panel_card(frame)
+    vars_sociedades, btn_todas, btn_ninguna = _crear_selector_sociedades(panel)
+
+    fila_fecha = tk.Frame(panel, bg=branding.COLOR_BLANCO)
+    fila_fecha.pack(pady=(12, 4))
+    tk.Label(
+        fila_fecha,
+        text="Fecha clave",
+        font=("Helvetica", 10, "bold"),
+        fg=branding.COLOR_PRIMARIO,
+        bg=branding.COLOR_BLANCO,
+    ).pack(side="left", padx=(0, 8))
+    # Sin validate="key": en un DateEntry rompe la selección desde el
+    # calendario (bug real en activos-propios-py).
+    entry_fecha = DateEntry(fila_fecha, date_pattern="dd.mm.yyyy", locale="es_CO", width=12)
+    entry_fecha.pack(side="left")
+
+    status_var = tk.StringVar(master=frame, value="")
+    btn_descargar = branding.RoundedButton(
+        panel, text="Descargar FBL1N", style="primary", width=220
+    )
+    btn_descargar.config(
+        command=lambda: _descargar_fbl1n_handler(
+            root,
+            _sociedades_marcadas(vars_sociedades),
+            entry_fecha.get_date(),
+            status_var,
+            btn_descargar,
+            btn_atras,
+        )
+    )
+    btn_descargar.pack(pady=(12, 16))
+
+    tk.Label(
+        frame,
+        textvariable=status_var,
+        font=("Helvetica", 10),
+        fg=branding.COLOR_PRIMARIO,
+        bg=branding.COLOR_FONDO,
+        wraplength=480,
+    ).pack(pady=(4, 0))
+
+    frame.pack(fill="both", expand=True)
+    # Exponer widgets para los tests.
+    frame.opcion = opcion
+    frame.btn_atras = btn_atras
+    frame.vars_sociedades = vars_sociedades
+    frame.btn_todas = btn_todas
+    frame.btn_ninguna = btn_ninguna
+    frame.entry_fecha = entry_fecha
+    frame.btn_descargar = btn_descargar
+    frame.status_var = status_var
+    return frame
 
 
 def abrir_deudores(root: tk.Tk, parent_frame: tk.Frame) -> tk.Frame:

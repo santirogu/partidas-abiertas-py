@@ -1,23 +1,39 @@
 # Partidas Abiertas
 
 App de escritorio para Windows que automatiza la descarga de partidas
-abiertas desde SAP y su análisis de antigüedad. Se conecta a la sesión de
-SAP GUI que el usuario ya tiene abierta (nunca pide ni guarda
-credenciales) y deja todo lo que genera en la carpeta `salida/`, junto al
-ejecutable.
+abiertas desde SAP. Se conecta a la sesión de SAP GUI que el usuario ya
+tiene abierta (nunca pide ni guarda credenciales) y deja el archivo
+original que exporta SAP en la carpeta `salida/`, junto al ejecutable.
 
-> **Borrador.** Este README se completa en la Fase 5. Hoy están listos el
-> esqueleto y la interfaz base; las 4 opciones todavía no se conectan a
-> SAP (ver [`docs/fichas-flujos.md`](docs/fichas-flujos.md)).
+> **Borrador.** Este README se completa en la Fase 5. Estado de cada
+> opción en [`docs/fichas-flujos.md`](docs/fichas-flujos.md).
 
 ## Opciones del menú
 
-| Card | Transacción | Qué hace |
-|---|---|---|
-| Acreedores | FBL1N | Partidas abiertas de proveedores por sociedad |
-| Deudores | FBL5N | Partidas abiertas de clientes por sociedad |
-| Maestro de cuentas | Y_FI_GRL_004 | Plan de cuentas; identifica las cuentas con gestión de partidas abiertas |
-| Partidas de mayor | FAGLL03 | Partidas abiertas de esas cuentas y su antigüedad |
+| Card | Transacción | Qué hace | Estado |
+|---|---|---|---|
+| Acreedores | FBL1N | Partidas abiertas de proveedores | ✅ Lista (falta el nombre de la disposición) |
+| Deudores | FBL5N | Partidas abiertas de clientes | ⏳ Esperando grabación |
+| Maestro de cuentas | Y_FI_GRL_004 | Plan de cuentas; identifica las cuentas con gestión de partidas abiertas | ⏳ Esperando grabación |
+| Partidas de mayor | FAGLL03 | Partidas abiertas de esas cuentas de mayor | ⏳ Esperando grabación |
+
+### Acreedores (FBL1N)
+
+1. Marca las sociedades (por defecto, las 28) y elige la fecha clave (por
+   defecto, hoy).
+2. Pulsa **Descargar FBL1N** y confirma. La app usa el portapapeles para
+   pasarle las sociedades a SAP, así que reemplaza lo que tengas copiado.
+3. No uses SAP mientras corre. Al terminar, el archivo queda en
+   `salida/FBL1N_AAAAMMDD_HHMMSS.xlsx`.
+
+También se puede correr desde la terminal:
+
+```bash
+python src/fbl1n.py 28.10.2026            # todas las sociedades
+python src/fbl1n.py 28.10.2026 ISA XM     # solo ISA y XM
+```
+
+Códigos de salida: 0 = OK, 1 = error (datos o SAP), 2 = uso incorrecto.
 
 ## Requisitos
 
@@ -50,8 +66,9 @@ reemplaza por `tests/helpers.MockSession`.
 
 | Archivo | Tests | Qué cubre |
 |---|---|---|
-| `test_main.py` | 25 | Ventana, menú 2×2, navegación a cada vista y de vuelta, footer, manejo de errores, splash |
-| `test_comun.py` | 27 | Logging a archivo, `ejecutar`, conexión a SAP, apartamento COM, abrir transacción, utilidades de archivos |
+| `test_comun.py` | 51 | Validaciones, logging, conexión a SAP, COM, portapapeles, selección múltiple, calendario, disposición por nombre, exportar, archivos |
+| `test_main.py` | 38 | Ventana, menú 2×2, navegación, vista y handler de Acreedores, footer, errores, splash |
+| `test_fbl1n.py` | 19 | Cada paso de FBL1N, orden del flujo completo, validaciones, CLI |
 | `test_branding.py` | 17 | `RoundedButton` (estilos, estado, `invoke`, reconfiguración) y logo |
 | `test_paths.py` | 7 | Rutas en modo dev y empaquetado |
 
@@ -60,8 +77,9 @@ reemplaza por `tests/helpers.MockSession`.
 ```
 partidas-abiertas-py/
 ├── src/
-│   ├── main.py        # GUI: menú, vistas, arranque
-│   ├── comun.py       # identidad, logging, conexión SAP, pasos y archivos compartidos
+│   ├── main.py        # GUI: menú, vistas, handlers, arranque
+│   ├── comun.py       # catálogo, logging, conexión SAP, pasos y archivos compartidos
+│   ├── fbl1n.py       # flujo FBL1N (acreedores)
 │   ├── branding.py    # paleta, logo, RoundedButton
 │   └── paths.py       # rutas dev/empaquetado
 ├── tests/             # un test_<modulo>.py por módulo + helpers.py
@@ -70,7 +88,7 @@ partidas-abiertas-py/
 │   └── grabaciones/   # grabaciones .vbs de SAP (referencia, NO se empaquetan)
 ├── docs/
 │   └── fichas-flujos.md
-├── salida/            # RUNTIME (ignorada): exports, Excel procesados y logs/
+├── salida/            # RUNTIME (ignorada): exports de SAP y logs/
 ├── pyproject.toml     # metadatos + configuración de ruff
 ├── requirements.txt / requirements-dev.txt
 ├── CLAUDE.md

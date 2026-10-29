@@ -4,15 +4,16 @@ import sys
 import tkinter as tk
 import types
 import unittest
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import ANY, MagicMock, call, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import helpers  # noqa: F401  (agrega src/ al sys.path)
+import helpers
 
 import branding
 import comun
+import fbl1n
 import main
 import paths
 
@@ -245,6 +246,179 @@ class CerrarSplashTest(unittest.TestCase):
         )
         with patch.dict(sys.modules, {"pyi_splash": splash}):
             main._cerrar_splash()
+
+
+class AbrirAcreedoresTest(_TkTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.root._logo_ref = None
+        self.parent = tk.Frame(self.root)
+        self.parent.pack(fill="both", expand=True)
+        self.frame = main.abrir_acreedores(self.root, self.parent)
+
+    def test_all_companies_checked_by_default(self) -> None:
+        self.assertEqual(list(self.frame.vars_sociedades), list(comun.SOCIEDADES))
+        self.assertTrue(all(v.get() for v in self.frame.vars_sociedades.values()))
+
+    def test_none_and_all_buttons_toggle_every_company(self) -> None:
+        self.frame.btn_ninguna.invoke()
+        self.assertFalse(any(v.get() for v in self.frame.vars_sociedades.values()))
+        self.frame.btn_todas.invoke()
+        self.assertTrue(all(v.get() for v in self.frame.vars_sociedades.values()))
+
+    def test_key_date_defaults_to_today(self) -> None:
+        self.assertEqual(self.frame.entry_fecha.get_date(), date.today())
+
+    def test_key_date_entry_does_not_validate_on_key(self) -> None:
+        """REGRESIÓN heredada de activos-propios-py: `validate="key"` en un
+        DateEntry rompe la selección desde el calendario."""
+        self.assertNotIn(str(self.frame.entry_fecha.cget("validate")), ("key", "all"))
+
+    def test_download_button_passes_checked_companies_and_date(self) -> None:
+        self.frame.btn_ninguna.invoke()
+        self.frame.vars_sociedades["ISA"].set(True)
+        self.frame.vars_sociedades["XM"].set(True)
+        self.frame.entry_fecha.set_date(date(2026, 9, 30))
+        with patch("main._descargar_fbl1n_handler") as handler:
+            self.frame.btn_descargar.invoke()
+        args = handler.call_args[0]
+        self.assertEqual(args[1], ["ISA", "XM"])
+        self.assertEqual(args[2], date(2026, 9, 30))
+        self.assertIs(args[4], self.frame.btn_descargar)
+        self.assertIs(args[5], self.frame.btn_atras)
+
+
+class DescargarFbl1nHandlerTest(_TkTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.root.after = lambda delay, fn, *args: fn(*args)  # UI síncrona
+        self.status_var = tk.StringVar(master=self.root)
+        self.button = tk.Button(self.root)
+        self.btn_atras = tk.Button(self.root)
+        self._disposicion = patch.object(fbl1n, "DISPOSICION", "/PARTABIERTAS")
+        self._disposicion.start()
+
+    def tearDown(self) -> None:
+        self._disposicion.stop()
+        super().tearDown()
+
+    def _llamar(self, sociedades=("ISA",), fecha=date(2026, 10, 28)) -> None:
+        main._descargar_fbl1n_handler(
+            self.root, list(sociedades), fecha, self.status_var, self.button, self.btn_atras
+        )
+
+    def _sync_thread(self):
+        return patch(
+            "main.threading.Thread",
+            side_effect=lambda target=None, **kw: helpers.SyncFakeThread(target),
+        )
+
+    def test_cancel_does_not_start_thread(self) -> None:
+        with (
+            patch("main.messagebox.askyesno", return_value=False),
+            patch("main.threading.Thread") as mock_thread,
+        ):
+            self._llamar()
+        mock_thread.assert_not_called()
+
+    def test_no_company_shows_error_without_confirming(self) -> None:
+        with (
+            patch("main.messagebox.showerror") as mock_err,
+            patch("main.messagebox.askyesno") as mock_ask,
+        ):
+            self._llamar(sociedades=[])
+        mock_ask.assert_not_called()
+        self.assertEqual(mock_err.call_args[0][0], "Datos inválidos")
+
+    def test_pending_layout_shows_error(self) -> None:
+        with (
+            patch.object(fbl1n, "DISPOSICION", None),
+            patch("main.messagebox.showerror") as mock_err,
+            patch("main.messagebox.askyesno") as mock_ask,
+        ):
+            self._llamar()
+        mock_ask.assert_not_called()
+        self.assertIn("disposición", mock_err.call_args[0][1])
+
+    def test_confirmation_warns_about_clipboard_and_summarizes_companies(self) -> None:
+        with (
+            patch("main.messagebox.askyesno", return_value=False) as mock_ask,
+        ):
+            self._llamar(sociedades=comun.SOCIEDADES)
+        mensaje = mock_ask.call_args[0][1]
+        self.assertIn("portapapeles", mensaje)
+        self.assertIn("todas las sociedades (28)", mensaje)
+        self.assertIn("28.10.2026", mensaje)
+
+    def test_disables_buttons_before_starting_thread(self) -> None:
+        estados = {}
+
+        class _HiloQueMira:
+            def __init__(hilo, target=None, **kw) -> None:
+                pass
+
+            def start(hilo) -> None:
+                estados["accion"] = str(self.button["state"])
+                estados["atras"] = str(self.btn_atras["state"])
+
+        with (
+            patch("main.messagebox.askyesno", return_value=True),
+            patch("main.threading.Thread", _HiloQueMira),
+        ):
+            self._llamar()
+        self.assertEqual(estados, {"accion": "disabled", "atras": "disabled"})
+
+    def test_happy_path_downloads_and_reenables(self) -> None:
+        mocks = {
+            "get_sap_session": MagicMock(return_value="sesion"),
+            "descargar_fbl1n": MagicMock(return_value=("C:/app/salida", "FBL1N_x.xlsx")),
+        }
+        with (
+            patch("main.messagebox.askyesno", return_value=True),
+            patch("main.messagebox.showinfo") as mock_info,
+            self._sync_thread(),
+            patch.multiple("fbl1n", **mocks),
+        ):
+            self._llamar(sociedades=["xm", "ISA"])
+        mocks["descargar_fbl1n"].assert_called_once_with(
+            "sesion", ["ISA", "XM"], date(2026, 10, 28), progreso=ANY
+        )
+        self.assertIn("FBL1N_x.xlsx", mock_info.call_args[0][1])
+        self.assertEqual(str(self.button["state"]), "normal")
+        self.assertEqual(str(self.btn_atras["state"]), "normal")
+        self.assertEqual(self.status_var.get(), "")
+
+    def test_flow_error_shows_message_and_reenables(self) -> None:
+        mocks = {
+            "get_sap_session": MagicMock(return_value="sesion"),
+            "descargar_fbl1n": MagicMock(side_effect=RuntimeError("Falló: Ejecutar el reporte")),
+        }
+        with (
+            patch("main.messagebox.askyesno", return_value=True),
+            patch("main.messagebox.showerror") as mock_err,
+            self._sync_thread(),
+            patch.multiple("fbl1n", **mocks),
+            self.assertLogs(comun.logger, level="ERROR"),
+        ):
+            self._llamar()
+        self.assertEqual(mock_err.call_args[0][0], "Error en la descarga de FBL1N")
+        self.assertIn("Ejecutar el reporte", mock_err.call_args[0][1])
+        self.assertEqual(str(self.button["state"]), "normal")
+        self.assertEqual(str(self.btn_atras["state"]), "normal")
+
+    def test_progress_updates_status_label(self) -> None:
+        def descargar(session, socs, fecha, progreso):
+            progreso("Paso 4 de 7: ejecutando el reporte…")
+            self.assertEqual(self.status_var.get(), "Paso 4 de 7: ejecutando el reporte…")
+            return ("C:/salida", "FBL1N_x.xlsx")
+
+        with (
+            patch("main.messagebox.askyesno", return_value=True),
+            patch("main.messagebox.showinfo"),
+            self._sync_thread(),
+            patch.multiple("fbl1n", get_sap_session=MagicMock(), descargar_fbl1n=descargar),
+        ):
+            self._llamar()
 
 
 class MainTest(unittest.TestCase):

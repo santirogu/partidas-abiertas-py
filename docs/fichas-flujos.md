@@ -1,116 +1,96 @@
-# Fichas de los flujos (Fase 0)
+# Fichas de los flujos
 
 Especificación de los 4 flujos a partir de las grabaciones de
 `resources/grabaciones/` y de las notas de la reunión
 (`Partidas abiertas.docx`, en la carpeta de red
-`//192.168.68.116/Compartida`). Es la base de la Fase 3: cada flujo se
-implementa cuando su grabación nueva esté disponible.
+`//192.168.68.116/Compartida`).
 
 > Las grabaciones `.vbs` vienen en UTF-16LE. Para leerlas:
 > `iconv -f UTF-16LE -t UTF-8 resources/grabaciones/FBL1N.vbs`
 
-## El proceso
+## Alcance (decidido el 2026-10-28)
 
-1. **FBL1N y FBL5N**: partidas abiertas de acreedores y deudores por
-   sociedad.
-2. **Y_FI_GRL_004** (maestro del plan de cuentas): se toman las cuentas
-   con `X` en la columna **PI** (gestión de partidas abiertas), excluyendo
-   el plan de cuentas consolidado **001** (incluye todas las cuentas y
-   hace la extracción muy pesada). Si una cuenta compartida tiene PI en el
-   plan de cuentas, aplica a todas las sociedades que la usan.
-3. **FAGLL03**: con esas cuentas se consultan las partidas abiertas de
-   mayor, sin revisar el balance primero.
-4. **Antigüedad**: cada partida se clasifica por antigüedad con un
-   semáforo (rojo para más de un año, intermedio alrededor de 3 meses,
-   verde para ~1 mes). La reunión no fijó un umbral definitivo.
+- Cada opción **descarga el archivo original de SAP** a `salida/` y nada
+  más: no hay procesamiento del Excel.
+- El **semáforo de antigüedad queda fuera del alcance** (lo hace otra
+  persona del equipo).
+- Sociedades: la lista oficial son las 28 de `comun.SOCIEDADES`. El
+  usuario puede elegir todas o algunas.
+- Fecha clave: la elige el usuario; por defecto, hoy.
 
-Según las notas, primero se prueba el rendimiento de la consulta en
-pantalla; el procesamiento en segundo plano queda como alternativa porque
-su salida viene con peor formato.
+## El proceso (según la reunión)
 
-## Problemas comunes a las 4 grabaciones
+1. **FBL1N y FBL5N**: partidas abiertas de acreedores y deudores.
+2. **Y_FI_GRL_004** (maestro del plan de cuentas): las cuentas con `X` en
+   la columna **PI** (gestión de partidas abiertas), sin el plan de
+   cuentas consolidado **001**.
+3. **FAGLL03**: partidas abiertas de esas cuentas de mayor.
 
-| # | Problema | Consecuencia | Solución |
-|---|---|---|---|
-| 1 | La transacción se abre sin `/n` (`okcd = "fbl1n"`) | Falla si el usuario está dentro de otra transacción | `comun.abrir_transaccion` usa `/n` ✅ |
-| 2 | La disposición se elige por **número de fila** en el diálogo (378, 168, 473) | Si alguien crea o borra una disposición, se elige otra sin aviso | Escribir el nombre en el campo **Disposición** de la pantalla de selección (requiere regrabar) |
-| 3 | No se graba la carpeta ni el nombre del archivo exportado | El archivo queda donde SAP tenga por defecto | Escribir `DY_PATH` y `DY_FILENAME` en el diálogo de guardado (requiere regrabar) |
-| 4 | Se usa `*` en todas las sociedades | Extracciones lentas | Permitir elegir sociedades (pendiente de decisión) |
-| 5 | Salen con un número fijo de F3 | Uno de más saca de la transacción | La siguiente transacción arranca con `/n`; no hace falta volver |
+## Problemas comunes de las grabaciones
 
-## FBL1N — Partidas abiertas de acreedores
-
-| Paso | Grabación | Qué hace |
+| # | Problema | Solución en la app |
 |---|---|---|
-| 1 | `wnd[0]/tbar[0]/okcd = "fbl1n"` + Enter | Abre la transacción |
-| 2 | `wnd[0]/usr/ctxtKD_LIFNR-LOW = "*"` | Todos los acreedores |
-| 3 | `wnd[0]/usr/ctxtKD_BUKRS-LOW = "*"` | Todas las sociedades |
-| 4 | `wnd[0]/tbar[1]/btn[8]` | Ejecutar (partidas abiertas a la fecha clave por defecto: hoy) |
-| 5 | `wnd[0]/tbar[1]/btn[33]` + fila **378** del diálogo de disposiciones | Elige la disposición |
-| 6 | `wnd[0]/mbar/menu[0]/menu[3]/menu[1]` | Exportar la lista |
-| 7 | `wnd[1]` F4 → `wnd[2]/usr/ctxtDY_PATH` F4 → `wnd[3]/tbar[0]/btn[0]` → `wnd[2]/tbar[0]/btn[0]` → `wnd[1]/tbar[0]/btn[11]` | Elige la carpeta navegando y guarda |
-| 8 | `wnd[0]/tbar[0]/btn[3]` | Atrás |
+| 1 | La transacción se abre sin `/n` | `comun.abrir_transaccion` usa `/n` ✅ |
+| 2 | La disposición se elige por **número de fila** | `comun.elegir_disposicion` la busca por nombre en la columna `VARIANT` ✅ (falta el nombre de cada una) |
+| 3 | No se graba el nombre del archivo exportado | `comun.exportar_hoja_calculo` escribe `DY_PATH` y `DY_FILENAME` ✅ |
+| 4 | Salen con un número fijo de F3 | `comun.volver_al_inicio` usa `/n` ✅ |
 
-## FBL5N — Partidas abiertas de deudores
+## FBL1N — Partidas abiertas de acreedores ✅ implementado
 
-| Paso | Grabación | Qué hace |
+Grabación del 2026-10-28 (`FBL1N.vbs`, con el usuario de Windows
+reemplazado por `USUARIO`). Módulo: `src/fbl1n.py`.
+
+| Paso | Grabación | En la app |
 |---|---|---|
-| 1 | `okcd = "fbl5n"` + Enter | Abre la transacción |
-| 2 | `wnd[0]/usr/chkX_NORM = true`, `wnd[0]/usr/chkX_SHBV = true` | Partidas normales + operaciones CME |
-| 3 | `wnd[0]/usr/ctxtDD_KUNNR-LOW = "*"`, `wnd[0]/usr/ctxtDD_BUKRS-LOW = "*"` | Todos los deudores y sociedades |
-| 4 | `btn[8]`, `btn[33]` + fila **168** | Ejecutar y elegir disposición |
-| 5 | `menu[0]/menu[3]/menu[1]` → `wnd[1]/tbar[0]/btn[0]` | Exportar y confirmar (ruta y nombre por defecto) |
-| 6 | `btn[3]` ×2 | Atrás |
+| 1 | `okcd = "fbl1n"` + Enter | `abrir_transaccion` con `/nFBL1N` |
+| 2 | `btn%_KD_LIFNR_%_APP_%-VALU_PUSH` → `…SLOW_I[1,0] = "*"` → `wnd[1]/tbar[0]/btn[8]` | `seleccionar_acreedores`: todos los acreedores |
+| 3 | `btn%_KD_BUKRS_%_APP_%-VALU_PUSH` → `btn[16]` (borrar) → `btn[24]` (pegar del portapapeles) → `btn[8]` | `seleccionar_sociedades`: la app copia las sociedades elegidas al portapapeles |
+| 4 | `ctxtPA_STIDA` + F4 → `wnd[1]/usr/cntlCONTAINER/shellcont/shell.selectionInterval = "AAAAMMDD,AAAAMMDD"` | `fijar_fecha_clave`: mismo calendario (no depende del formato de fecha del usuario) |
+| 5 | `chkX_NORM = true`, `chkX_SHBV = true` | `marcar_clases_de_partida` |
+| 6 | `wnd[0]/tbar[1]/btn[8]` | `ejecutar_reporte` |
+| 7 | `btn[33]` → ordenar por `VARIANT` → fila **182** | `elegir_disposicion(fbl1n.DISPOSICION)` por nombre |
+| 8 | `menu[0]/menu[3]/menu[1]` → `wnd[1]/usr/ctxtDY_PATH` → `wnd[1]/tbar[0]/btn[0]` | `exportar_hoja_calculo`: carpeta `salida/` y nombre `FBL1N_AAAAMMDD_HHMMSS.xlsx` |
+| 9 | `btn[3]` ×2 | `volver_al_inicio` (`/n`) |
 
-## Y_FI_GRL_004 — Maestro del plan de cuentas
+**Pendiente:** el nombre de la disposición (`fbl1n.DISPOSICION`). Sin él,
+la app avisa y no se conecta a SAP.
 
-| Paso | Grabación | Qué hace |
-|---|---|---|
-| 1 | `okcd = "y_fi_grl_004"` + Enter | Abre el reporte |
-| 2 | `wnd[0]/usr/ctxtSD_KTOPL-LOW = "*"`, `wnd[0]/usr/ctxtSD_BUKRS-LOW = "*"` | Todos los planes de cuentas y sociedades |
-| 3 | `btn[8]` | Ejecutar (sin elegir disposición) |
-| 4 | `menu[0]/menu[3]/menu[1]` → `wnd[1]/tbar[0]/btn[0]` | Exportar y confirmar |
-| 5 | `btn[3]` ×2 | Atrás |
+**A verificar en la primera prueba en Windows:**
 
-Post-proceso: filtrar `PI = X` y excluir el plan de cuentas `001` →
-lista de cuentas para FAGLL03.
+- `wnd[1]/usr/ctxtDY_FILENAME` no está en `FBL1N.vbs`; se usa porque
+  `activos-propios-py` lo usa en producción en este mismo SAP.
+- En el equipo de la grabación no apareció la ventana de formato de hoja
+  de cálculo. Si aparece en otro equipo, la app la acepta con
+  `wnd[1]/tbar[0]/btn[0]`.
 
-## FAGLL03 — Partidas abiertas de cuentas de mayor
+**Export de ejemplo** (`EXPORT_20261028_223644_FBL1N.XLSX`, 2,6 MB): una
+hoja, 23 columnas, 24.366 partidas de las 28 sociedades más 74 filas de
+subtotales y totales. La columna "Ejercicio" aparece dos veces (la
+segunda casi vacía; pendiente saber qué campo es). Como la app entrega el
+archivo tal cual, nada de esto afecta al flujo.
 
-| Paso | Grabación | Qué hace |
-|---|---|---|
-| 1 | `okcd = "fagll03"` + Enter | Abre la transacción |
-| 2 | `wnd[0]/usr/btn%_SD_SAKNR_%_APP_%-VALU_PUSH` | Selección múltiple de cuentas |
-| 3 | `wnd[1]/tbar[0]/btn[24]` → `wnd[1]/tbar[0]/btn[8]` | Carga las cuentas **desde el portapapeles** y acepta |
-| 4 | `wnd[0]/usr/ctxtSD_BUKRS-LOW = ""` | Todas las sociedades |
-| 5 | `btn[8]`, `btn[33]` + fila **473** | Ejecutar y elegir disposición |
-| 6 | `menu[0]/menu[3]/menu[1]` → `wnd[1]/tbar[0]/btn[0]` | Exportar y confirmar |
-| 7 | `btn[3]` ×2 | Atrás |
+## FBL5N — Partidas abiertas de deudores ⏳ esperando grabación nueva
 
-La app llenará el portapapeles con las cuentas del maestro antes del
-paso 3 (eso reemplaza lo que el usuario tuviera copiado: se avisa en la
-confirmación). Post-proceso: antigüedad en días, rango y color del
-semáforo.
+Grabación vieja: `wnd[0]/usr/chkX_NORM` y `chkX_SHBV` marcados,
+`ctxtDD_KUNNR-LOW = "*"`, `ctxtDD_BUKRS-LOW = "*"`, disposición por fila
+(**168**), exportar y confirmar con `wnd[1]/tbar[0]/btn[0]`.
 
-## Pendiente para la Fase 3
+## Y_FI_GRL_004 — Maestro del plan de cuentas ⏳ esperando grabación nueva
 
-**Regrabar las 4 transacciones** escribiendo en vez de seleccionar:
+Grabación vieja: `ctxtSD_KTOPL-LOW = "*"`, `ctxtSD_BUKRS-LOW = "*"`,
+ejecutar, exportar sin elegir disposición.
 
-- entrar con `/n` + transacción;
-- escribir la sociedad y la fecha clave, aunque sean los valores de siempre;
-- en FBL1N, FBL5N y FAGLL03, escribir el nombre de la disposición en el
-  campo **Disposición** de la pantalla de selección;
-- en el diálogo de guardado, escribir la carpeta y el nombre del archivo.
+## FAGLL03 — Partidas abiertas de cuentas de mayor ⏳ esperando grabación nueva
 
-**Un export de ejemplo de cada transacción** (en `resources/ejemplos/`,
-que no se versiona) para programar el filtro y el semáforo con las
-columnas reales.
+Grabación vieja: las cuentas se cargan **desde el portapapeles** en la
+selección múltiple de `SD_SAKNR` (`btn[24]` → `btn[8]`), todas las
+sociedades (`ctxtSD_BUKRS-LOW = ""`), disposición por fila (**473**).
+La lista de cuentas sale del maestro (paso 2 del proceso).
 
-**Decisiones** (entre paréntesis, la recomendación):
+## Cómo regrabar las que faltan
 
-- Sociedades: ¿todas o elegibles? (todas por defecto, con opción de elegir varias)
-- Fecha clave: ¿hoy o elegible? (elegible, con hoy por defecto)
-- Umbrales del semáforo (verde ≤ 90 días, amarillo 91–365, rojo > 365,
-  desde la fecha de documento hasta la fecha clave)
-- ¿Semáforo solo en FAGLL03 o también en FBL1N y FBL5N?
-- Autoría para el `LICENSE`.
+- Entrar con `/n` + transacción.
+- Escribir la sociedad y la fecha clave, aunque sean los valores de siempre.
+- Tener a mano el **nombre** de la disposición (columna "Disposición" del
+  diálogo "Seleccionar disposición").
+- En el diálogo de guardado, escribir la carpeta y el nombre del archivo.

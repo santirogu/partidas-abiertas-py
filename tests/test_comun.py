@@ -1,4 +1,4 @@
-"""Tests de src/comun.py: logging, conexión SAP, COM y archivos."""
+"""Tests de src/comun.py: validaciones, logging, SAP, portapapeles y archivos."""
 
 import io
 import logging
@@ -6,7 +6,7 @@ import sys
 import tempfile
 import types
 import unittest
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -253,6 +253,227 @@ class ArchivosTest(unittest.TestCase):
     def test_esperar_archivo_listo_times_out_when_missing(self) -> None:
         archivo = self.tmp / "nunca.xlsx"
         self.assertFalse(comun.esperar_archivo_listo(archivo, timeout_seg=0.05, poll_seg=0.01))
+
+
+class ValidarSociedadesTest(unittest.TestCase):
+    def test_catalog_has_the_28_official_companies(self) -> None:
+        self.assertEqual(len(comun.SOCIEDADES), 28)
+        self.assertEqual(list(comun.SOCIEDADES), sorted(comun.SOCIEDADES))
+
+    def test_normalizes_and_returns_catalog_order(self) -> None:
+        self.assertEqual(
+            comun.validar_sociedades([" xm", "ISA", "am ", "isa"]), ["AM", "ISA", "XM"]
+        )
+
+    def test_empty_selection_raises(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            comun.validar_sociedades(["", "  "])
+        self.assertIn("al menos una sociedad", str(ctx.exception))
+
+    def test_unknown_company_raises(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            comun.validar_sociedades(["ISA", "ZZZ"])
+        self.assertIn("ZZZ", str(ctx.exception))
+
+
+class ValidarFechaClaveTest(unittest.TestCase):
+    def test_accepts_date(self) -> None:
+        self.assertEqual(comun.validar_fecha_clave(date(2026, 10, 28)), date(2026, 10, 28))
+
+    def test_accepts_datetime(self) -> None:
+        self.assertEqual(
+            comun.validar_fecha_clave(datetime(2026, 10, 28, 9, 30)), date(2026, 10, 28)
+        )
+
+    def test_parses_user_format(self) -> None:
+        self.assertEqual(comun.validar_fecha_clave(" 28.10.2026 "), date(2026, 10, 28))
+
+    def test_invalid_text_raises(self) -> None:
+        for valor in ("2026-10-28", "31.02.2026", ""):
+            with self.subTest(valor=valor), self.assertRaises(ValueError):
+                comun.validar_fecha_clave(valor)
+
+
+class CopiarAlPortapapelesTest(unittest.TestCase):
+    def test_sets_unicode_text_and_closes(self) -> None:
+        clip = helpers.fake_win32clipboard()
+        with patch.dict(sys.modules, {"win32clipboard": clip}):
+            comun.copiar_al_portapapeles("ISA\r\nXM")
+        self.assertEqual(clip.contenido, ("ISA\r\nXM", clip.CF_UNICODETEXT))
+        self.assertEqual(
+            clip.llamadas, ["OpenClipboard", "EmptyClipboard", "SetClipboardText", "CloseClipboard"]
+        )
+
+    def test_retries_when_clipboard_is_busy(self) -> None:
+        clip = helpers.fake_win32clipboard(abrir_falla_veces=2)
+        with (
+            patch.dict(sys.modules, {"win32clipboard": clip}),
+            patch.object(comun, "PORTAPAPELES_ESPERA_SEG", 0),
+        ):
+            comun.copiar_al_portapapeles("ISA")
+        self.assertEqual(clip.llamadas.count("OpenClipboard"), 3)
+        self.assertEqual(clip.contenido[0], "ISA")
+
+    def test_gives_up_with_clear_message(self) -> None:
+        clip = helpers.fake_win32clipboard(abrir_falla_veces=99)
+        with (
+            patch.dict(sys.modules, {"win32clipboard": clip}),
+            patch.object(comun, "PORTAPAPELES_ESPERA_SEG", 0),
+            self.assertRaises(RuntimeError) as ctx,
+        ):
+            comun.copiar_al_portapapeles("ISA")
+        self.assertIn("portapapeles", str(ctx.exception))
+        self.assertNotIn("SetClipboardText", clip.llamadas)
+
+    def test_raises_without_pywin32(self) -> None:
+        with (
+            patch.dict(sys.modules, {"win32clipboard": None}),
+            self.assertRaises(RuntimeError) as ctx,
+        ):
+            comun.copiar_al_portapapeles("ISA")
+        self.assertIn("pywin32", str(ctx.exception))
+
+
+class SeleccionMultipleTest(unittest.TestCase):
+    BOTON = "wnd[0]/usr/btn%_CAMPO_%_APP_%-VALU_PUSH"
+
+    def test_cargar_valor_unico_writes_first_row(self) -> None:
+        session = helpers.MockSession()
+        comun.cargar_valor_unico(session, self.BOTON, "*")
+        self.assertEqual(
+            session.actions,
+            [
+                (self.BOTON, "press"),
+                (comun.ID_SELMULT_PRIMER_VALOR, "text=", "*"),
+                ("wnd[1]/tbar[0]/btn[8]", "press"),
+            ],
+        )
+
+    def test_pegar_clears_pastes_and_accepts(self) -> None:
+        """Se borra la selección antes de pegar: el campo puede traer la
+        sociedad por defecto del usuario, que se sumaría a la lista."""
+        session = helpers.MockSession()
+        clip = helpers.fake_win32clipboard()
+        with patch.dict(sys.modules, {"win32clipboard": clip}):
+            comun.pegar_seleccion_multiple(session, self.BOTON, ["ISA", "XM"])
+        self.assertEqual(clip.contenido[0], "ISA\r\nXM")
+        self.assertEqual(
+            session.actions,
+            [
+                (self.BOTON, "press"),
+                ("wnd[1]/tbar[0]/btn[16]", "press"),
+                ("wnd[1]/tbar[0]/btn[24]", "press"),
+                ("wnd[1]/tbar[0]/btn[8]", "press"),
+            ],
+        )
+
+
+class ElegirFechaEnCalendarioTest(unittest.TestCase):
+    def test_opens_f4_and_selects_interval_in_sap_format(self) -> None:
+        """El calendario recibe AAAAMMDD: no depende del formato de fecha
+        configurado en el perfil SAP de cada usuario."""
+        session = helpers.MockSession()
+        comun.elegir_fecha_en_calendario(session, "wnd[0]/usr/ctxtFECHA", date(2026, 10, 28))
+        self.assertEqual(
+            session.actions,
+            [
+                ("wnd[0]/usr/ctxtFECHA", "setFocus"),
+                ("wnd[0]", "sendVKey", 4),
+                (comun.ID_CALENDARIO, "selectionInterval=", "20261028,20261028"),
+            ],
+        )
+
+
+class ElegirDisposicionTest(unittest.TestCase):
+    def _session(self, nombres: list[str], visibles: int = 10) -> helpers.MockSession:
+        session = helpers.MockSession()
+        session.configurar_grilla(
+            comun.ID_GRILLA_DISPOSICIONES, comun.COLUMNA_NOMBRE_DISPOSICION, nombres, visibles
+        )
+        return session
+
+    def test_selects_row_by_name_not_position(self) -> None:
+        session = self._session(["/OTRA", "1SAP", "/PARTABIERTAS", "/ZZZ"])
+        comun.elegir_disposicion(session, "/partabiertas")
+        grilla = comun.ID_GRILLA_DISPOSICIONES
+        self.assertEqual(session.actions[0], (comun.ID_BTN_DISPOSICION, "press"))
+        self.assertEqual(
+            session.actions[-3:],
+            [
+                (grilla, "currentCellRow=", 2),
+                (grilla, "selectedRows=", "2"),
+                (grilla, "clickCurrentCell"),
+            ],
+        )
+
+    def test_scrolls_in_blocks_to_load_rows(self) -> None:
+        nombres = [f"/V{i:03d}" for i in range(25)]
+        session = self._session(nombres, visibles=10)
+        comun.elegir_disposicion(session, "/V024")
+        scrolls = [a[2] for a in session.actions if a[1] == "firstVisibleRow="]
+        self.assertEqual(scrolls, [0, 10, 20])
+
+    def test_missing_layout_closes_dialog_and_raises(self) -> None:
+        session = self._session(["/A", "/B"])
+        with self.assertRaises(RuntimeError) as ctx:
+            comun.elegir_disposicion(session, "/NOEXISTE")
+        self.assertIn("/NOEXISTE", str(ctx.exception))
+        self.assertIn(("wnd[1]", "close"), session.actions)
+
+    def test_empty_name_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            comun.elegir_disposicion(helpers.MockSession(), "  ")
+
+
+class ExportarHojaCalculoTest(unittest.TestCase):
+    def test_writes_folder_and_name_then_generates(self) -> None:
+        session = helpers.MockSession()
+        carpeta = Path("C:/app/salida")
+        destino = comun.exportar_hoja_calculo(session, carpeta, "FBL1N_20261028_153000.xlsx")
+        self.assertEqual(destino, carpeta / "FBL1N_20261028_153000.xlsx")
+        self.assertEqual(
+            session.actions,
+            [
+                ("wnd[0]/mbar/menu[0]/menu[3]/menu[1]", "select"),
+                ("wnd[1]/usr/ctxtDY_PATH", "text=", str(carpeta)),
+                ("wnd[1]/usr/ctxtDY_FILENAME", "text=", "FBL1N_20261028_153000.xlsx"),
+                ("wnd[1]/tbar[0]/btn[0]", "press"),
+            ],
+        )
+
+    def test_accepts_format_window_when_it_appears(self) -> None:
+        """En equipos sin el formato fijado, SAP pregunta el formato antes
+        del diálogo de guardado."""
+        session = helpers.MockSession()
+        session.faltantes.add(comun.ID_GUARDAR_CARPETA)
+        session.al_presionar[comun.ID_FORMATO_CONTINUAR] = lambda: session.faltantes.discard(
+            comun.ID_GUARDAR_CARPETA
+        )
+        comun.exportar_hoja_calculo(session, Path("C:/salida"), "x.xlsx")
+        presiones = [a[0] for a in session.actions if a[1] == "press"]
+        self.assertEqual(presiones, ["wnd[1]/tbar[0]/btn[0]", "wnd[1]/tbar[0]/btn[0]"])
+
+    def test_raises_when_save_dialog_never_appears(self) -> None:
+        session = helpers.MockSession()
+        session.faltantes.add(comun.ID_GUARDAR_CARPETA)
+        with self.assertRaises(RuntimeError) as ctx:
+            comun.exportar_hoja_calculo(session, Path("C:/salida"), "x.xlsx")
+        self.assertIn("guardar", str(ctx.exception))
+
+
+class VolverAlInicioTest(unittest.TestCase):
+    def test_goes_to_initial_screen(self) -> None:
+        session = helpers.MockSession()
+        comun.volver_al_inicio(session)
+        self.assertEqual(
+            session.actions,
+            [("wnd[0]/tbar[0]/okcd", "text=", "/n"), ("wnd[0]", "sendVKey", 0)],
+        )
+
+    def test_failure_is_ignored(self) -> None:
+        session = helpers.MockSession()
+        session.faltantes.add(comun.ID_CAMPO_COMANDO)
+        comun.volver_al_inicio(session)
 
 
 if __name__ == "__main__":

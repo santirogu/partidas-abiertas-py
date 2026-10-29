@@ -16,6 +16,7 @@ Así funcionan igual `python -m unittest discover tests` y
 from __future__ import annotations
 
 import sys
+import types
 from pathlib import Path
 
 import openpyxl
@@ -42,11 +43,32 @@ class MockSession:
     def __init__(self) -> None:
         self._elements: dict[str, _MockElement] = {}
         self.actions: list[tuple] = []
+        # IDs que "no están en pantalla": findById lanza error (o devuelve
+        # None con raise_=False), como el SAP real.
+        self.faltantes: set[str] = set()
+        # id → callback que corre al hacer `press()` sobre ese control
+        # (p. ej. para que aparezca una ventana después de un botón).
+        self.al_presionar: dict[str, object] = {}
 
-    def findById(self, element_id: str) -> _MockElement:
+    def findById(self, element_id: str, raise_: bool = True) -> _MockElement | None:
+        if element_id in self.faltantes:
+            if raise_:
+                raise RuntimeError(f"The control could not be found by id: {element_id}")
+            return None
         if element_id not in self._elements:
             self._elements[element_id] = _MockElement(self, element_id)
         return self._elements[element_id]
+
+    def configurar_grilla(
+        self, element_id: str, columna: str, valores: list[str], visibles: int = 10
+    ) -> _MockElement:
+        """Prepara una grilla ALV con `valores` en `columna` (una fila por
+        valor) para `GetCellValue`, `RowCount` y `VisibleRowCount`."""
+        grilla = self.findById(element_id)
+        object.__setattr__(grilla, "RowCount", len(valores))
+        object.__setattr__(grilla, "VisibleRowCount", visibles)
+        object.__setattr__(grilla, "_celdas", {(i, columna): v for i, v in enumerate(valores)})
+        return grilla
 
 
 class _MockElement:
@@ -59,6 +81,7 @@ class _MockElement:
         "currentCellRow",
         "firstVisibleRow",
         "selectedRows",
+        "selectionInterval",
     }
 
     def __init__(self, session: MockSession, element_id: str) -> None:
@@ -67,6 +90,7 @@ class _MockElement:
         object.__setattr__(self, "text", "")
         object.__setattr__(self, "caretPosition", 0)
         object.__setattr__(self, "selected", False)
+        object.__setattr__(self, "_celdas", {})
 
     def __setattr__(self, nombre: str, valor) -> None:
         if nombre in self._PROPIEDADES:
@@ -76,8 +100,17 @@ class _MockElement:
     def _registrar(self, metodo: str, *args) -> None:
         self._session.actions.append((self._id, metodo, *args))
 
+    def GetCellValue(self, fila: int, columna: str) -> str:
+        return self._celdas.get((fila, columna), "")
+
+    def close(self) -> None:
+        self._registrar("close")
+
     def press(self) -> None:
         self._registrar("press")
+        callback = self._session.al_presionar.get(self._id)
+        if callback is not None:
+            callback()
 
     def setFocus(self) -> None:
         self._registrar("setFocus")
@@ -93,6 +126,35 @@ class _MockElement:
 
     def clickCurrentCell(self) -> None:
         self._registrar("clickCurrentCell")
+
+
+def fake_win32clipboard(abrir_falla_veces: int = 0) -> types.ModuleType:
+    """Módulo `win32clipboard` falso: guarda el texto en `.contenido`.
+
+    `OpenClipboard` falla las primeras `abrir_falla_veces` veces, como
+    cuando otro programa tiene el portapapeles ocupado.
+    """
+    modulo = types.ModuleType("win32clipboard")
+    modulo.CF_UNICODETEXT = 13
+    modulo.contenido = None
+    modulo.llamadas = []
+    fallos = {"restantes": abrir_falla_veces}
+
+    def open_clipboard() -> None:
+        modulo.llamadas.append("OpenClipboard")
+        if fallos["restantes"] > 0:
+            fallos["restantes"] -= 1
+            raise OSError("Acceso denegado")
+
+    def set_text(texto: str, formato: int) -> None:
+        modulo.llamadas.append("SetClipboardText")
+        modulo.contenido = (texto, formato)
+
+    modulo.OpenClipboard = open_clipboard
+    modulo.EmptyClipboard = lambda: modulo.llamadas.append("EmptyClipboard")
+    modulo.SetClipboardText = set_text
+    modulo.CloseClipboard = lambda: modulo.llamadas.append("CloseClipboard")
+    return modulo
 
 
 # ---------------------------------------------------------------------------
