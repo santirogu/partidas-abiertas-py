@@ -12,7 +12,7 @@ original que exporta SAP en la carpeta `salida/`, junto al ejecutable.
 
 | Card | Transacción | Qué hace | Estado |
 |---|---|---|---|
-| Acreedores | FBL1N | Partidas abiertas de proveedores | ✅ Lista (falta el nombre de la disposición) |
+| Acreedores | FBL1N | Partidas abiertas de proveedores | ✅ Lista para probar en Windows |
 | Deudores | FBL5N | Partidas abiertas de clientes | ⏳ Esperando grabación |
 | Maestro de cuentas | Y_FI_GRL_004 | Plan de cuentas; identifica las cuentas con gestión de partidas abiertas | ⏳ Esperando grabación |
 | Partidas de mayor | FAGLL03 | Partidas abiertas de esas cuentas de mayor | ⏳ Esperando grabación |
@@ -66,9 +66,9 @@ reemplaza por `tests/helpers.MockSession`.
 
 | Archivo | Tests | Qué cubre |
 |---|---|---|
-| `test_comun.py` | 51 | Validaciones, logging, conexión a SAP, COM, portapapeles, selección múltiple, calendario, disposición por nombre, exportar, archivos |
+| `test_comun.py` | 52 | Validaciones, logging, conexión a SAP, COM, portapapeles, selección múltiple, calendario, disposición por nombre, exportar, archivos |
 | `test_main.py` | 38 | Ventana, menú 2×2, navegación, vista y handler de Acreedores, footer, errores, splash |
-| `test_fbl1n.py` | 19 | Cada paso de FBL1N, orden del flujo completo, validaciones, CLI |
+| `test_fbl1n.py` | 20 | Cada paso de FBL1N, orden del flujo completo, validaciones, CLI |
 | `test_branding.py` | 17 | `RoundedButton` (estilos, estado, `invoke`, reconfiguración) y logo |
 | `test_paths.py` | 7 | Rutas en modo dev y empaquetado |
 

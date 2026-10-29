@@ -15,7 +15,7 @@ import helpers
 import comun
 import fbl1n
 
-DISPOSICION = "/PARTABIERTAS"
+DISPOSICION = "/PARTABIERTA"
 
 
 class ValidarDisposicionTest(unittest.TestCase):
@@ -27,6 +27,10 @@ class ValidarDisposicionTest(unittest.TestCase):
     def test_returns_configured_layout(self) -> None:
         with patch.object(fbl1n, "DISPOSICION", f" {DISPOSICION} "):
             self.assertEqual(fbl1n.validar_disposicion(), DISPOSICION)
+
+    def test_uses_confirmed_layout(self) -> None:
+        """/PARTABIERTA es la disposición confirmada por el equipo usuario."""
+        self.assertEqual(fbl1n.validar_disposicion(), "/PARTABIERTA")
 
 
 class PasosTest(unittest.TestCase):

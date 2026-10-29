@@ -393,8 +393,8 @@ class ElegirDisposicionTest(unittest.TestCase):
         return session
 
     def test_selects_row_by_name_not_position(self) -> None:
-        session = self._session(["/OTRA", "1SAP", "/PARTABIERTAS", "/ZZZ"])
-        comun.elegir_disposicion(session, "/partabiertas")
+        session = self._session(["/OTRA", "1SAP", "/PARTABIERTA", "/ZZZ"])
+        comun.elegir_disposicion(session, "/partabierta")
         grilla = comun.ID_GRILLA_DISPOSICIONES
         self.assertEqual(session.actions[0], (comun.ID_BTN_DISPOSICION, "press"))
         self.assertEqual(
@@ -405,6 +405,13 @@ class ElegirDisposicionTest(unittest.TestCase):
                 (grilla, "clickCurrentCell"),
             ],
         )
+
+    def test_does_not_match_names_that_only_share_a_prefix(self) -> None:
+        """Una disposición parecida (/PARTABIERTAS) que aparece antes en la
+        lista no debe confundirse con la buscada (/PARTABIERTA)."""
+        session = self._session(["/PARTABIERTAS", "/PARTABIERTA_OLD", "/PARTABIERTA"])
+        comun.elegir_disposicion(session, "/PARTABIERTA")
+        self.assertIn((comun.ID_GRILLA_DISPOSICIONES, "currentCellRow=", 2), session.actions)
 
     def test_scrolls_in_blocks_to_load_rows(self) -> None:
         nombres = [f"/V{i:03d}" for i in range(25)]

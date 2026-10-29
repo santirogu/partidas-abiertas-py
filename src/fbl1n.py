@@ -57,8 +57,9 @@ TRANSACCION = "FBL1N"
 PREFIJO_SALIDA = "FBL1N"  # salida: FBL1N_AAAAMMDD_HHMMSS.xlsx
 
 # Nombre corto de la disposición (columna "Disposición" del diálogo
-# "Seleccionar disposición"). PENDIENTE: lo confirma el equipo usuario.
-DISPOSICION: str | None = None
+# "Seleccionar disposición"), confirmado por el equipo usuario el
+# 2026-10-28. Si se deja en None, la app avisa y no se conecta a SAP.
+DISPOSICION: str | None = "/PARTABIERTA"
 
 # IDs de FBL1N.vbs.
 ID_BTN_ACREEDORES = "wnd[0]/usr/btn%_KD_LIFNR_%_APP_%-VALU_PUSH"

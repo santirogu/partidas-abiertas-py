@@ -29,7 +29,7 @@ carpeta de red `//192.168.68.116/Compartida` (montada en
 | 0. Fichas de los flujos | ✅ `docs/fichas-flujos.md` |
 | 1. Esqueleto | ✅ paths, branding, comun, helpers de tests, pyproject + ruff |
 | 2. GUI base | ✅ menú 2×2, 4 vistas pendientes con "← Atrás", footer, errores, splash |
-| 3. Flujos | 🟡 FBL1N implementado (falta `fbl1n.DISPOSICION` y probarlo en Windows); FBL5N, Y_FI_GRL_004 y FAGLL03 esperan grabación nueva |
+| 3. Flujos | 🟡 FBL1N implementado con la disposición `/PARTABIERTA` (falta probarlo en Windows); FBL5N, Y_FI_GRL_004 y FAGLL03 esperan grabación nueva |
 | 4. Empaquetado | — |
 | 5. Docs y skills | — |
 | 6. Extras (cobertura, CI, lockfile) | — |
@@ -74,7 +74,7 @@ usuario.
 
 ```bash
 .venv/bin/python src/main.py
-.venv/bin/python -m unittest discover tests -v       # 132 tests
+.venv/bin/python -m unittest discover tests -v       # 134 tests
 .venv/bin/python src/fbl1n.py 28.10.2026 [ISA XM]    # CLI (solo Windows con SAP)
 .venv/bin/python -m unittest tests.test_comun -v
 .venv/bin/ruff check src tests && .venv/bin/ruff format src tests

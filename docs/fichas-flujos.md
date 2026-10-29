@@ -31,7 +31,7 @@ Especificación de los 4 flujos a partir de las grabaciones de
 | # | Problema | Solución en la app |
 |---|---|---|
 | 1 | La transacción se abre sin `/n` | `comun.abrir_transaccion` usa `/n` ✅ |
-| 2 | La disposición se elige por **número de fila** | `comun.elegir_disposicion` la busca por nombre en la columna `VARIANT` ✅ (falta el nombre de cada una) |
+| 2 | La disposición se elige por **número de fila** | `comun.elegir_disposicion` la busca por nombre en la columna `VARIANT` ✅ (FBL1N: `/PARTABIERTA`; faltan las demás) |
 | 3 | No se graba el nombre del archivo exportado | `comun.exportar_hoja_calculo` escribe `DY_PATH` y `DY_FILENAME` ✅ |
 | 4 | Salen con un número fijo de F3 | `comun.volver_al_inicio` usa `/n` ✅ |
 
@@ -52,8 +52,8 @@ reemplazado por `USUARIO`). Módulo: `src/fbl1n.py`.
 | 8 | `menu[0]/menu[3]/menu[1]` → `wnd[1]/usr/ctxtDY_PATH` → `wnd[1]/tbar[0]/btn[0]` | `exportar_hoja_calculo`: carpeta `salida/` y nombre `FBL1N_AAAAMMDD_HHMMSS.xlsx` |
 | 9 | `btn[3]` ×2 | `volver_al_inicio` (`/n`) |
 
-**Pendiente:** el nombre de la disposición (`fbl1n.DISPOSICION`). Sin él,
-la app avisa y no se conecta a SAP.
+**Disposición:** `/PARTABIERTA` (`fbl1n.DISPOSICION`, confirmada el
+2026-10-28).
 
 **A verificar en la primera prueba en Windows:**
 

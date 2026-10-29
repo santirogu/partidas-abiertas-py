@@ -295,7 +295,7 @@ class DescargarFbl1nHandlerTest(_TkTestCase):
         self.status_var = tk.StringVar(master=self.root)
         self.button = tk.Button(self.root)
         self.btn_atras = tk.Button(self.root)
-        self._disposicion = patch.object(fbl1n, "DISPOSICION", "/PARTABIERTAS")
+        self._disposicion = patch.object(fbl1n, "DISPOSICION", "/PARTABIERTA")
         self._disposicion.start()
 
     def tearDown(self) -> None:
