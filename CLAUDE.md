@@ -50,7 +50,7 @@ src/
   main.py      GUI: OPCIONES (con modulo/usa_fecha_clave/requiere), VISTAS,
                _crear_vista_descarga, _descargar_handler, construir_menu,
                crear_app, main
-  comun.py     TITULO_APP, TITULAR, SOCIEDADES, validar_*, logging,
+  comun.py     TITULO_APP, TITULAR, validar_* (sociedades contra la lista del usuario), logging,
                crear_avisador, ejecutar, get_sap_session, com_apartment,
                copiar_al_portapapeles, pasos de SAP compartidos
                (abrir_transaccion, selección múltiple, calendario,
@@ -61,25 +61,29 @@ src/
   y_fi_grl_004.py  maestro de cuentas          │ get_sap_session(), descargar(...), main()
   fagll03.py   partidas de mayor               ┘ + leer_cuentas_partidas_abiertas (maestro)
   branding.py  paleta COLOR_*, cargar_logo, RoundedButton
-  paths.py     PROJECT_ROOT, SALIDA_DIR, LOGS_DIR, bundled_resource_path
+  sociedades.py  lista de sociedades del usuario: cargar/codigos/guardar,
+               agregar/modificar/quitar (puras), restaurar_iniciales
+  paths.py     PROJECT_ROOT, SALIDA_DIR, LOGS_DIR, CONFIG_DIR, bundled_resource_path
 tests/
   helpers.py   agrega src/ al sys.path; MockSession, SyncFakeThread, crear_libro
   test_<modulo>.py
 resources/
   logo.png         se empaqueta
+  sociedades_iniciales.json  lista inicial (24, de Sociedades.xlsx), se empaqueta
   grabaciones/     .vbs en UTF-16LE, solo referencia (no se empaquetan)
   ejemplos/        exports reales de SAP (ignorada por git)
+configuracion/     runtime (ignorada): sociedades.json, la lista del usuario
 salida/            runtime (ignorada): exports de SAP, logs/app.log
 ```
 
-No hay `entrada/`: los datos salen de SAP, no de un archivo que edite el
-usuario.
+No hay `entrada/`: los datos salen de SAP. Lo único que el usuario
+administra es la lista de sociedades, desde la pantalla «Sociedades».
 
 ## Comandos
 
 ```bash
 .venv/bin/python src/main.py
-.venv/bin/python -m unittest discover tests -v       # 214 tests
+.venv/bin/python -m unittest discover tests -v       # 256 tests
 .venv/bin/python src/fbl1n.py 28.10.2026 [ISA XM]    # CLI (solo Windows con SAP)
 .venv/bin/python src/fbl5n.py 28.10.2026 [ISA XM]
 .venv/bin/python src/y_fi_grl_004.py [ISA XM]
@@ -152,6 +156,20 @@ usuario.
   cuentas con partidas en FAGLL03 tienen PI = X en el maestro. Con las 28
   sociedades son ~15.466 cuentas: falta confirmar en Windows que SAP
   acepte pegar tantas.
+- **Sociedades administradas por el usuario** (`sociedades.py` + vista
+  `abrir_sociedades`). Pedido del 2026-10-29: la lista cambia y no debe
+  estar en el código. El usuario eligió una pantalla en la app (no un
+  Excel editable) y guardar junto al `.exe`. Se guarda en
+  `configuracion/sociedades.json` con escritura atómica (temporal +
+  `os.replace`); la primera vez se copia `resources/sociedades_iniciales.json`
+  y nunca se sobrescribe. Cada acción se guarda al instante. Las vistas de
+  descarga leen la lista al abrirse y al volver de «Sociedades»
+  (`SelectorSociedades.recargar`); con más de 6 filas de casillas usan
+  barra de desplazamiento porque la ventana es fija. **Fase 4:** el `.spec`
+  debe empaquetar `resources/sociedades_iniciales.json`.
+- **Los tests no tocan `configuracion/` real:** `tests/helpers.py` apunta
+  `sociedades.ARCHIVO` a una carpeta temporal al importarse;
+  `helpers.sociedades_temporales()` da a cada test una lista propia.
 - **Verificar el resultado después de Ejecutar** (`verificar_resultado`).
   Incidente del 2026-10-29: FBL5N solo con AM no tenía partidas; SAP se
   quedó en la pantalla de selección, la app pulsó "Seleccionar

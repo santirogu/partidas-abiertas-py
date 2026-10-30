@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import helpers
 
 import comun
+import sociedades
 
 
 class ConfigurarLoggingTest(unittest.TestCase):
@@ -256,13 +257,21 @@ class ArchivosTest(unittest.TestCase):
 
 
 class ValidarSociedadesTest(unittest.TestCase):
-    def test_catalog_has_the_28_official_companies(self) -> None:
-        self.assertEqual(len(comun.SOCIEDADES), 28)
-        self.assertEqual(list(comun.SOCIEDADES), sorted(comun.SOCIEDADES))
+    def test_validates_against_the_user_list(self) -> None:
+        """La lista ya no está fija en el código: XM salió de la lista
+        inicial el 2026-10-29, pero si el usuario la agrega vuelve a valer."""
+        with self.assertRaises(ValueError) as ctx:
+            comun.validar_sociedades(["XM"])
+        self.assertIn("Editar sociedades", str(ctx.exception))
+        with helpers.sociedades_temporales(["ISA", "XM"]):
+            self.assertEqual(comun.validar_sociedades(["xm"]), ["XM"])
+
+    def test_accepts_an_explicit_catalog(self) -> None:
+        self.assertEqual(comun.validar_sociedades(["b", "a"], catalogo=["A", "B", "C"]), ["A", "B"])
 
     def test_normalizes_and_returns_catalog_order(self) -> None:
         self.assertEqual(
-            comun.validar_sociedades([" xm", "ISA", "am ", "isa"]), ["AM", "ISA", "XM"]
+            comun.validar_sociedades([" tran", "ISA", "am ", "isa"]), ["AM", "ISA", "TRAN"]
         )
 
     def test_empty_selection_raises(self) -> None:
@@ -630,12 +639,12 @@ class ResumirSeleccionTest(unittest.TestCase):
 
     def test_all_companies_without_date(self) -> None:
         self.assertEqual(
-            comun.resumir_seleccion("Y_FI_GRL_004", list(comun.SOCIEDADES)),
+            comun.resumir_seleccion("Y_FI_GRL_004", sociedades.codigos()),
             "Y_FI_GRL_004 · todas las sociedades",
         )
 
     def test_many_companies_are_counted(self) -> None:
-        self.assertIn("6 sociedades", comun.resumir_seleccion("FBL1N", list(comun.SOCIEDADES[:6])))
+        self.assertIn("6 sociedades", comun.resumir_seleccion("FBL1N", sociedades.codigos()[:6]))
 
 
 class VerificarResultadoTest(unittest.TestCase):

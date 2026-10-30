@@ -14,6 +14,7 @@ import helpers
 
 import comun
 import fagll03
+import sociedades
 
 ENCABEZADO_MAESTRO = ["Cta.mayor", "Texto breve", "PI", "Cla", "Soc."]
 
@@ -27,8 +28,8 @@ def _crear_maestro(carpeta: Path, nombre: str = "Y_FI_GRL_004_20261028_225628.xl
                 ENCABEZADO_MAESTRO,
                 ["1001010100", "Caja", None, "001", "ISA"],
                 ["1317210105", "Clientes", "X", "001", "ISA"],
-                ["1317210105", "Clientes", "X", "001", "XM"],  # misma cuenta, otra sociedad
-                ["2424067700", "Proveedores", "X", "001", "XM"],
+                ["1317210105", "Clientes", "X", "001", "TRAN"],  # misma cuenta, otra sociedad
+                ["2424067700", "Proveedores", "X", "001", "TRAN"],
                 ["2810050500", "Anticipos", "X", "001", "AM"],
                 ["2999999999", "Sin sociedad", "X", "001", None],
             ]
@@ -46,19 +47,19 @@ class LeerCuentasPartidasAbiertasTest(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_only_accounts_with_pi_for_selected_companies(self) -> None:
-        cuentas = fagll03.leer_cuentas_partidas_abiertas(self.maestro, ["ISA", "XM"])
+        cuentas = fagll03.leer_cuentas_partidas_abiertas(self.maestro, ["ISA", "TRAN"])
         self.assertEqual(cuentas, ["1317210105", "2424067700"])
 
     def test_filters_by_company(self) -> None:
         """La gestión de partidas abiertas se define por sociedad: una
-        cuenta con PI = X solo en XM no entra si se elige solo ISA."""
+        cuenta con PI = X solo en TRAN no entra si se elige solo ISA."""
         self.assertEqual(
             fagll03.leer_cuentas_partidas_abiertas(self.maestro, ["ISA"]), ["1317210105"]
         )
 
     def test_no_accounts_for_companies_raises(self) -> None:
         with self.assertRaises(ValueError) as ctx:
-            fagll03.leer_cuentas_partidas_abiertas(self.maestro, ["TRAN"])
+            fagll03.leer_cuentas_partidas_abiertas(self.maestro, ["RIOS"])
         self.assertIn("PI = X", str(ctx.exception))
 
     def test_missing_columns_raise_clear_error(self) -> None:
@@ -167,7 +168,7 @@ class DescargarTest(unittest.TestCase):
             p.stop()
         self._tmp.cleanup()
 
-    def _descargar(self, sociedades=("ISA", "XM")) -> tuple[str, str]:
+    def _descargar(self, sociedades=("ISA", "TRAN")) -> tuple[str, str]:
         return fagll03.descargar(
             self.session,
             list(sociedades),
@@ -195,7 +196,7 @@ class DescargarTest(unittest.TestCase):
     def test_pastes_master_accounts_then_companies(self) -> None:
         """Dos listas por el portapapeles, en el orden de la grabación."""
         self._descargar()
-        self.assertEqual(self.pegados, ["1317210105\r\n2424067700", "ISA\r\nXM"])
+        self.assertEqual(self.pegados, ["1317210105\r\n2424067700", "ISA\r\nTRAN"])
 
     def test_saves_with_fagll03_prefix(self) -> None:
         carpeta, nombre = self._descargar()
@@ -211,7 +212,7 @@ class DescargarTest(unittest.TestCase):
 
     def test_master_problems_do_not_touch_sap(self) -> None:
         with self.assertRaises(ValueError):
-            self._descargar(sociedades=["TRAN"])  # sin cuentas PI = X
+            self._descargar(sociedades=["RIOS"])  # sin cuentas PI = X
         with (
             patch("fagll03.validar_maestro", side_effect=ValueError("sin maestro")),
             self.assertRaises(ValueError),
@@ -268,7 +269,7 @@ class MainEntryPointTest(unittest.TestCase):
             codigo, out, _ = self._main(["28.10.2026"])
         self.assertEqual(codigo, 0)
         self.assertIn("FAGLL03_x.xlsx", out)
-        self.assertEqual(descargar.call_args[0][1], list(comun.SOCIEDADES))
+        self.assertEqual(descargar.call_args[0][1], sociedades.codigos())
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ import helpers
 
 import comun
 import fbl1n
+import sociedades
 
 DISPOSICION = "/PARTABIERTA"
 
@@ -52,8 +53,8 @@ class PasosTest(unittest.TestCase):
         session = helpers.MockSession()
         clip = helpers.fake_win32clipboard()
         with patch.dict(sys.modules, {"win32clipboard": clip}):
-            fbl1n.seleccionar_sociedades(session, ["ISA", "XM"])
-        self.assertEqual(clip.contenido[0], "ISA\r\nXM")
+            fbl1n.seleccionar_sociedades(session, ["ISA", "TRAN"])
+        self.assertEqual(clip.contenido[0], "ISA\r\nTRAN")
         self.assertEqual(
             session.actions[0], ("wnd[0]/usr/btn%_KD_BUKRS_%_APP_%-VALU_PUSH", "press")
         )
@@ -107,7 +108,7 @@ class DescargarTest(unittest.TestCase):
         return self.session.actions.index(accion)
 
     def test_runs_steps_in_recording_order(self) -> None:
-        fbl1n.descargar(self.session, ["ISA", "XM"], date(2026, 10, 28), self.carpeta)
+        fbl1n.descargar(self.session, ["ISA", "TRAN"], date(2026, 10, 28), self.carpeta)
         orden = [
             ("wnd[0]/tbar[0]/okcd", "text=", "/nFBL1N"),
             ("wnd[0]/usr/btn%_KD_LIFNR_%_APP_%-VALU_PUSH", "press"),
@@ -122,7 +123,7 @@ class DescargarTest(unittest.TestCase):
         ]
         indices = [self._indice(a) for a in orden]
         self.assertEqual(indices, sorted(indices))
-        self.assertEqual(self.clip.contenido[0], "ISA\r\nXM")
+        self.assertEqual(self.clip.contenido[0], "ISA\r\nTRAN")
 
     def test_saves_in_destination_with_timestamped_name(self) -> None:
         carpeta, nombre = fbl1n.descargar(self.session, ["ISA"], date(2026, 10, 28), self.carpeta)
@@ -148,9 +149,9 @@ class DescargarTest(unittest.TestCase):
             "sociedad": (["ZZZ"], date(2026, 10, 28)),
             "fecha": (["ISA"], "2026-10-28"),
         }
-        for nombre, (sociedades, fecha) in casos.items():
+        for nombre, (elegidas, fecha) in casos.items():
             with self.subTest(caso=nombre), self.assertRaises(ValueError):
-                fbl1n.descargar(self.session, sociedades, fecha, self.carpeta)
+                fbl1n.descargar(self.session, elegidas, fecha, self.carpeta)
         self.assertEqual(self.session.actions, [])
 
     def test_pending_layout_does_not_touch_sap(self) -> None:
@@ -233,7 +234,7 @@ class MainEntryPointTest(unittest.TestCase):
             codigo, out, _ = self._main(["28.10.2026"])
         self.assertEqual(codigo, 0)
         self.assertIn("OK:", out)
-        self.assertEqual(descargar.call_args[0][1], list(comun.SOCIEDADES))
+        self.assertEqual(descargar.call_args[0][1], sociedades.codigos())
 
     def test_passes_given_companies(self) -> None:
         descargar = MagicMock(return_value=("C:/salida", "FBL1N_x.xlsx"))
@@ -242,9 +243,9 @@ class MainEntryPointTest(unittest.TestCase):
             patch("fbl1n.get_sap_session", return_value="sesion"),
             patch("fbl1n.descargar", descargar),
         ):
-            codigo, _, _ = self._main(["28.10.2026", "isa", "XM"])
+            codigo, _, _ = self._main(["28.10.2026", "isa", "TRAN"])
         self.assertEqual(codigo, 0)
-        self.assertEqual(descargar.call_args[0][1], ["isa", "XM"])
+        self.assertEqual(descargar.call_args[0][1], ["isa", "TRAN"])
 
 
 if __name__ == "__main__":

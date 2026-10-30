@@ -27,14 +27,14 @@ import traceback
 from collections.abc import Callable
 from datetime import date, datetime
 from pathlib import Path
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 from typing import NamedTuple
 
 from tkcalendar import DateEntry
 
 import branding
+import sociedades as catalogo_sociedades
 from comun import (
-    SOCIEDADES,
     TITULAR,
     TITULO_APP,
     SinResultadosError,
@@ -57,8 +57,12 @@ TAMANO_VENTANA = "620x605"
 # Todas las cards del menú miden lo mismo aunque sus textos tengan
 # distinto largo (pack_propagate(False)).
 _CARD_W, _CARD_H = 250, 170
-# Casillas de sociedades por fila en las vistas (28 sociedades → 4 filas).
+# Casillas de sociedades por fila en las vistas (24 sociedades → 4 filas).
 _COLUMNAS_SOCIEDADES = 7
+# A partir de aquí las casillas van en un área con barra de desplazamiento,
+# para que la vista siga cabiendo en la ventana fija.
+_FILAS_SIN_DESPLAZAMIENTO = 6
+_ALTO_FILA_CASILLA = 24
 
 
 class Opcion(NamedTuple):
@@ -296,12 +300,14 @@ def _crear_header_form(
     parent_frame: tk.Frame,
     titulo: str,
     subtitulo: str | None = None,
+    al_volver: Callable[[], object] | None = None,
 ) -> branding.RoundedButton:
     """Encabezado de toda vista: "← Atrás", logo, título y subtítulo.
 
     Devuelve el botón Atrás (ya cableado: destruye `frame` y vuelve a
     mostrar `parent_frame`) para que los handlers lo deshabiliten mientras
-    corre un flujo.
+    corre un flujo. `al_volver` corre después de volver (p. ej. para que la
+    vista de descarga relea la lista de sociedades).
     """
     btn_atras = branding.RoundedButton(
         frame, text="← Atrás", style="tertiary", font=("Helvetica", 9), padx=8, pady=2
@@ -311,6 +317,8 @@ def _crear_header_form(
     def volver() -> None:
         frame.destroy()
         parent_frame.pack(fill="both", expand=True)
+        if al_volver is not None:
+            al_volver()
 
     btn_atras.config(command=volver)
 
@@ -337,65 +345,132 @@ def _crear_header_form(
     return btn_atras
 
 
-def _crear_selector_sociedades(
-    parent: tk.Misc,
-) -> tuple[dict[str, tk.BooleanVar], branding.RoundedButton, branding.RoundedButton]:
-    """Casillas con las sociedades del catálogo (todas marcadas) y los
-    botones "Todas" / "Ninguna".
+class SelectorSociedades:
+    """Casillas con la lista de sociedades del usuario y los botones
+    "Todas", "Ninguna" y "Editar lista".
 
-    Returns:
-        `(variables, btn_todas, btn_ninguna)`; `variables` va de sociedad a
-        su `BooleanVar`.
+    La lista se lee del archivo al crearse y en cada `recargar()` (p. ej. al
+    volver de la vista "Sociedades"). Si el archivo no se puede leer, muestra
+    el error en lugar de las casillas y `valido` queda en False.
     """
-    variables = {s: tk.BooleanVar(master=parent, value=True) for s in SOCIEDADES}
 
-    def marcar(valor: bool) -> None:
-        for var in variables.values():
+    def __init__(self, parent: tk.Misc, al_editar: Callable[[], object]) -> None:
+        self.variables: dict[str, tk.BooleanVar] = {}
+        self.valido = False
+        self.con_desplazamiento = False
+
+        cabecera = tk.Frame(parent, bg=branding.COLOR_BLANCO)
+        cabecera.pack(fill="x", padx=16, pady=(14, 4))
+        tk.Label(
+            cabecera,
+            text="Sociedades",
+            font=("Helvetica", 10, "bold"),
+            fg=branding.COLOR_PRIMARIO,
+            bg=branding.COLOR_BLANCO,
+        ).pack(side="left")
+        estilo_enlace = dict(style="tertiary", padx=6, pady=1)
+        self.btn_ninguna = branding.RoundedButton(
+            cabecera, text="Ninguna", command=lambda: self.marcar(False), **estilo_enlace
+        )
+        self.btn_ninguna.pack(side="right")
+        self.btn_todas = branding.RoundedButton(
+            cabecera, text="Todas", command=lambda: self.marcar(True), **estilo_enlace
+        )
+        self.btn_todas.pack(side="right")
+        self.btn_editar = branding.RoundedButton(
+            cabecera, text="Editar lista", command=al_editar, **estilo_enlace
+        )
+        self.btn_editar.pack(side="right", padx=(0, 6))
+
+        # Las casillas se redibujan aquí dentro en cada recarga.
+        self.zona = tk.Frame(parent, bg=branding.COLOR_BLANCO)
+        self.zona.pack(padx=16)
+        self.lbl_error = tk.Label(
+            parent,
+            text="",
+            font=("Helvetica", 9),
+            fg=branding.COLOR_ACENTO,
+            bg=branding.COLOR_BLANCO,
+            wraplength=440,
+            justify="center",
+        )
+        self.recargar()
+
+    def recargar(self) -> bool:
+        """Relee la lista y redibuja las casillas. Las sociedades que ya
+        estaban conservan su marca; las nuevas aparecen marcadas."""
+        for hijo in self.zona.winfo_children():
+            hijo.destroy()
+        self.lbl_error.pack_forget()
+        try:
+            codigos = catalogo_sociedades.codigos()
+        except ValueError as exc:
+            self.variables = {}
+            self.valido = False
+            self.lbl_error.config(text=str(exc))
+            self.lbl_error.pack(padx=16, pady=(4, 0))
+            return False
+
+        marcas = {codigo: var.get() for codigo, var in self.variables.items()}
+        self.variables = {
+            codigo: tk.BooleanVar(master=self.zona, value=marcas.get(codigo, True))
+            for codigo in codigos
+        }
+        self._dibujar_casillas(codigos)
+        self.valido = True
+        return True
+
+    def _dibujar_casillas(self, codigos: list[str]) -> None:
+        filas = -(-len(codigos) // _COLUMNAS_SOCIEDADES)  # techo
+        self.con_desplazamiento = filas > _FILAS_SIN_DESPLAZAMIENTO
+        if self.con_desplazamiento:
+            # Con muchas sociedades la vista no cabría en la ventana fija:
+            # las casillas van en un área con barra de desplazamiento.
+            lienzo = tk.Canvas(
+                self.zona,
+                bg=branding.COLOR_BLANCO,
+                highlightthickness=0,
+                height=_FILAS_SIN_DESPLAZAMIENTO * _ALTO_FILA_CASILLA,
+            )
+            barra = ttk.Scrollbar(self.zona, orient="vertical", command=lienzo.yview)
+            contenedor = tk.Frame(lienzo, bg=branding.COLOR_BLANCO)
+            lienzo.create_window((0, 0), window=contenedor, anchor="nw")
+            lienzo.configure(yscrollcommand=barra.set)
+
+            def ajustar(_evento) -> None:
+                lienzo.configure(scrollregion=lienzo.bbox("all"), width=contenedor.winfo_reqwidth())
+
+            contenedor.bind("<Configure>", ajustar)
+            lienzo.pack(side="left")
+            barra.pack(side="right", fill="y")
+        else:
+            contenedor = self.zona
+
+        for indice, codigo in enumerate(codigos):
+            tk.Checkbutton(
+                contenedor,
+                text=codigo,
+                variable=self.variables[codigo],
+                font=("Helvetica", 9),
+                fg=branding.COLOR_GRIS,
+                bg=branding.COLOR_BLANCO,
+                activebackground=branding.COLOR_BLANCO,
+                highlightthickness=0,
+                anchor="w",
+                width=6,
+            ).grid(
+                row=indice // _COLUMNAS_SOCIEDADES,
+                column=indice % _COLUMNAS_SOCIEDADES,
+                sticky="w",
+                padx=2,
+            )
+
+    def marcar(self, valor: bool) -> None:
+        for var in self.variables.values():
             var.set(valor)
 
-    cabecera = tk.Frame(parent, bg=branding.COLOR_BLANCO)
-    cabecera.pack(fill="x", padx=16, pady=(14, 4))
-    tk.Label(
-        cabecera,
-        text="Sociedades",
-        font=("Helvetica", 10, "bold"),
-        fg=branding.COLOR_PRIMARIO,
-        bg=branding.COLOR_BLANCO,
-    ).pack(side="left")
-    btn_ninguna = branding.RoundedButton(
-        cabecera, text="Ninguna", style="tertiary", padx=6, pady=1, command=lambda: marcar(False)
-    )
-    btn_ninguna.pack(side="right")
-    btn_todas = branding.RoundedButton(
-        cabecera, text="Todas", style="tertiary", padx=6, pady=1, command=lambda: marcar(True)
-    )
-    btn_todas.pack(side="right")
-
-    casillas = tk.Frame(parent, bg=branding.COLOR_BLANCO)
-    casillas.pack(padx=16)
-    for indice, sociedad in enumerate(SOCIEDADES):
-        tk.Checkbutton(
-            casillas,
-            text=sociedad,
-            variable=variables[sociedad],
-            font=("Helvetica", 9),
-            fg=branding.COLOR_GRIS,
-            bg=branding.COLOR_BLANCO,
-            activebackground=branding.COLOR_BLANCO,
-            highlightthickness=0,
-            anchor="w",
-            width=6,
-        ).grid(
-            row=indice // _COLUMNAS_SOCIEDADES,
-            column=indice % _COLUMNAS_SOCIEDADES,
-            sticky="w",
-            padx=2,
-        )
-    return variables, btn_todas, btn_ninguna
-
-
-def _sociedades_marcadas(variables: dict[str, tk.BooleanVar]) -> list[str]:
-    return [s for s, var in variables.items() if var.get()]
+    def marcadas(self) -> list[str]:
+        return [codigo for codigo, var in self.variables.items() if var.get()]
 
 
 # ---------------------------------------------------------------------------
@@ -427,14 +502,15 @@ def _descargar_handler(
         messagebox.showerror("Error de import", f"No se pudo importar {opcion.modulo}:\n{exc}")
         return
     try:
-        socs = validar_sociedades(sociedades)
+        catalogo = catalogo_sociedades.codigos()
+        socs = validar_sociedades(sociedades, catalogo)
         fecha = validar_fecha_clave(fecha_clave) if opcion.usa_fecha_clave else None
         flujo.validar_configuracion()
     except ValueError as exc:
         messagebox.showerror("Datos inválidos", str(exc))
         return
 
-    if len(socs) == len(SOCIEDADES):
+    if set(socs) == set(catalogo):
         texto_sociedades = f"todas las sociedades ({len(socs)})"
     else:
         texto_sociedades = f"{len(socs)} sociedad(es): {', '.join(socs)}"
@@ -511,7 +587,8 @@ def _crear_vista_descarga(root: tk.Tk, parent_frame: tk.Frame, opcion: Opcion) -
     Entrega el archivo tal como lo exporta SAP en `salida/`. Si falta el
     archivo previo, el botón queda deshabilitado y la vista dice qué
     descargar primero; se evalúa al abrir la vista, así que basta con
-    volver al menú y entrar de nuevo después de descargarlo.
+    volver al menú y entrar de nuevo después de descargarlo. El botón
+    también se deshabilita si la lista de sociedades no se puede leer.
     """
     parent_frame.pack_forget()
     frame = tk.Frame(root, bg=branding.COLOR_FONDO)
@@ -519,8 +596,19 @@ def _crear_vista_descarga(root: tk.Tk, parent_frame: tk.Frame, opcion: Opcion) -
         root, frame, parent_frame, titulo=opcion.titulo, subtitulo=opcion.subtitulo
     )
 
+    def actualizar_boton() -> None:
+        habilitado = selector.valido and not (opcion.requiere and archivo_previo is None)
+        btn_descargar.config(state="normal" if habilitado else "disabled")
+
+    def al_volver_de_sociedades() -> None:
+        selector.recargar()
+        actualizar_boton()
+
     panel = _crear_panel_card(frame)
-    vars_sociedades, btn_todas, btn_ninguna = _crear_selector_sociedades(panel)
+    selector = SelectorSociedades(
+        panel,
+        al_editar=lambda: abrir_sociedades(root, frame, al_volver=al_volver_de_sociedades),
+    )
 
     entry_fecha = None
     if opcion.usa_fecha_clave:
@@ -570,7 +658,7 @@ def _crear_vista_descarga(root: tk.Tk, parent_frame: tk.Frame, opcion: Opcion) -
         command=lambda: _descargar_handler(
             root,
             opcion,
-            _sociedades_marcadas(vars_sociedades),
+            selector.marcadas(),
             entry_fecha.get_date() if entry_fecha is not None else None,
             status_var,
             btn_descargar,
@@ -578,8 +666,7 @@ def _crear_vista_descarga(root: tk.Tk, parent_frame: tk.Frame, opcion: Opcion) -
         )
     )
     btn_descargar.pack(pady=(12, 16))
-    if opcion.requiere and archivo_previo is None:
-        btn_descargar.config(state="disabled")
+    actualizar_boton()
 
     tk.Label(
         frame,
@@ -594,9 +681,7 @@ def _crear_vista_descarga(root: tk.Tk, parent_frame: tk.Frame, opcion: Opcion) -
     # Exponer widgets para los tests.
     frame.opcion = opcion
     frame.btn_atras = btn_atras
-    frame.vars_sociedades = vars_sociedades
-    frame.btn_todas = btn_todas
-    frame.btn_ninguna = btn_ninguna
+    frame.selector = selector
     frame.entry_fecha = entry_fecha
     frame.btn_descargar = btn_descargar
     frame.status_var = status_var
@@ -623,6 +708,257 @@ def abrir_partidas_mayor(root: tk.Tk, parent_frame: tk.Frame) -> tk.Frame:
     """Vista de FAGLL03 (partidas abiertas de cuentas de mayor; las cuentas
     salen del maestro más reciente)."""
     return _crear_vista_descarga(root, parent_frame, _opcion("partidas_mayor"))
+
+
+def abrir_sociedades(
+    root: tk.Tk, parent_frame: tk.Frame, al_volver: Callable[[], object] | None = None
+) -> tk.Frame:
+    """Vista "Sociedades": agregar, modificar, quitar y restaurar la lista
+    que usan las descargas.
+
+    Cada acción se guarda al instante en `configuracion/sociedades.json`
+    (no hay un "Guardar" general que se pueda olvidar). Se abre desde el
+    menú y desde "Editar lista" en cada vista de descarga; `al_volver` deja
+    que esa vista relea la lista.
+    """
+    parent_frame.pack_forget()
+    frame = tk.Frame(root, bg=branding.COLOR_FONDO)
+    btn_atras = _crear_header_form(
+        root,
+        frame,
+        parent_frame,
+        titulo="Sociedades",
+        subtitulo="Lista que usan las 4 descargas",
+        al_volver=al_volver,
+    )
+    estado = {"lista": [], "seleccion": None}
+
+    panel = _crear_panel_card(frame)
+    cuerpo = tk.Frame(panel, bg=branding.COLOR_BLANCO)
+    cuerpo.pack(padx=16, pady=(14, 6))
+
+    # --- Lista ---------------------------------------------------------
+    columna_lista = tk.Frame(cuerpo, bg=branding.COLOR_BLANCO)
+    columna_lista.pack(side="left", padx=(0, 16))
+    marco_lista = tk.Frame(columna_lista, bg=branding.COLOR_BLANCO)
+    marco_lista.pack()
+    lista = tk.Listbox(
+        marco_lista,
+        height=10,
+        width=26,
+        font=("Courier", 10),
+        activestyle="none",
+        exportselection=False,
+        selectbackground=branding.COLOR_PRIMARIO,
+        selectforeground=branding.COLOR_BLANCO,
+    )
+    barra = ttk.Scrollbar(marco_lista, orient="vertical", command=lista.yview)
+    lista.configure(yscrollcommand=barra.set)
+    lista.pack(side="left")
+    barra.pack(side="right", fill="y")
+    lbl_total = tk.Label(
+        columna_lista,
+        text="",
+        font=("Helvetica", 9),
+        fg=branding.COLOR_GRIS,
+        bg=branding.COLOR_BLANCO,
+    )
+    lbl_total.pack(anchor="w", pady=(4, 0))
+
+    # --- Formulario ----------------------------------------------------
+    formulario = tk.Frame(cuerpo, bg=branding.COLOR_BLANCO)
+    formulario.pack(side="left", anchor="n")
+    for fila, texto in enumerate(("Código", "Nombre")):
+        tk.Label(
+            formulario,
+            text=texto,
+            font=("Helvetica", 10, "bold"),
+            fg=branding.COLOR_PRIMARIO,
+            bg=branding.COLOR_BLANCO,
+        ).grid(row=fila, column=0, sticky="w", pady=3)
+    entry_codigo = ttk.Entry(formulario, width=8)
+    entry_codigo.grid(row=0, column=1, sticky="w", padx=(8, 0), pady=3)
+    entry_nombre = ttk.Entry(formulario, width=18)
+    entry_nombre.grid(row=1, column=1, sticky="w", padx=(8, 0), pady=3)
+    tk.Label(
+        formulario,
+        text="(opcional)",
+        font=("Helvetica", 8),
+        fg=branding.COLOR_GRIS_CLARO,
+        bg=branding.COLOR_BLANCO,
+    ).grid(row=2, column=1, sticky="w", padx=(8, 0))
+
+    botones = tk.Frame(formulario, bg=branding.COLOR_BLANCO)
+    botones.grid(row=3, column=0, columnspan=2, pady=(10, 0), sticky="w")
+    btn_agregar = branding.RoundedButton(botones, text="Agregar", style="primary", width=150)
+    btn_agregar.pack(pady=(0, 6))
+    btn_guardar = branding.RoundedButton(botones, text="Guardar cambios", style="acento", width=150)
+    btn_guardar.pack(pady=(0, 6))
+    btn_quitar = branding.RoundedButton(botones, text="Quitar", style="tertiary", width=150)
+    btn_quitar.pack()
+
+    btn_restaurar = branding.RoundedButton(
+        panel, text="Restaurar lista inicial", style="tertiary", font=("Helvetica", 9)
+    )
+    btn_restaurar.pack(anchor="e", padx=16, pady=(0, 10))
+
+    estado_var = tk.StringVar(master=frame, value="")
+    lbl_estado = tk.Label(
+        frame,
+        textvariable=estado_var,
+        font=("Helvetica", 10),
+        fg=branding.COLOR_OK,
+        bg=branding.COLOR_FONDO,
+        wraplength=480,
+    )
+    lbl_estado.pack(pady=(4, 0))
+
+    # --- Comportamiento --------------------------------------------------
+
+    def limpiar_formulario() -> None:
+        estado["seleccion"] = None
+        lista.selection_clear(0, "end")
+        entry_codigo.delete(0, "end")
+        entry_nombre.delete(0, "end")
+
+    def mostrar(lista_nueva, seleccionar: str | None = None) -> None:
+        estado["lista"] = lista_nueva
+        lista.delete(0, "end")
+        for s in lista_nueva:
+            lista.insert("end", f"{s.codigo:<5} {s.nombre}".rstrip())
+        lbl_total.config(text=f"{len(lista_nueva)} sociedades")
+        limpiar_formulario()
+        if seleccionar is not None:
+            indice = next(i for i, s in enumerate(lista_nueva) if s.codigo == seleccionar)
+            lista.selection_set(indice)
+            lista.see(indice)
+            al_seleccionar()
+
+    def al_seleccionar(_evento=None) -> None:
+        indices = lista.curselection()
+        if not indices:
+            return
+        elegida = estado["lista"][indices[0]]
+        estado["seleccion"] = elegida.codigo
+        entry_codigo.delete(0, "end")
+        entry_codigo.insert(0, elegida.codigo)
+        entry_nombre.delete(0, "end")
+        entry_nombre.insert(0, elegida.nombre)
+
+    def avisar(texto: str, error: bool = False) -> None:
+        lbl_estado.config(fg=branding.COLOR_ACENTO if error else branding.COLOR_OK)
+        estado_var.set(texto)
+
+    def aplicar(operacion: Callable[[], list], mensaje: str, seleccionar: str | None) -> None:
+        """Valida, guarda y muestra; los errores se explican sin cerrar nada."""
+        try:
+            nueva = operacion()
+            catalogo_sociedades.guardar(nueva)
+        except ValueError as exc:
+            messagebox.showerror("Datos inválidos", str(exc))
+            return
+        except OSError as exc:
+            messagebox.showerror(
+                "No se pudo guardar",
+                f"No se pudo guardar la lista de sociedades:\n{exc}",
+            )
+            return
+        log(mensaje)
+        mostrar(nueva, seleccionar)
+        avisar(mensaje)
+
+    def agregar() -> None:
+        codigo = entry_codigo.get().strip().upper()
+        aplicar(
+            lambda: catalogo_sociedades.agregar(estado["lista"], codigo, entry_nombre.get()),
+            f"Se agregó {codigo}.",
+            codigo,
+        )
+
+    def guardar_cambios() -> None:
+        actual = estado["seleccion"]
+        if actual is None:
+            messagebox.showerror(
+                "Selecciona una sociedad",
+                "Selecciona en la lista la sociedad que quieres modificar.",
+            )
+            return
+        codigo = entry_codigo.get().strip().upper()
+        aplicar(
+            lambda: catalogo_sociedades.modificar(
+                estado["lista"], actual, codigo, entry_nombre.get()
+            ),
+            f"Se guardaron los cambios de {codigo}.",
+            codigo,
+        )
+
+    def quitar() -> None:
+        actual = estado["seleccion"]
+        if actual is None:
+            messagebox.showerror(
+                "Selecciona una sociedad", "Selecciona en la lista la sociedad que quieres quitar."
+            )
+            return
+        if not messagebox.askyesno(
+            "Quitar sociedad",
+            f"¿Quitar {actual} de la lista?\n\nYa no aparecerá en las descargas.",
+        ):
+            return
+        aplicar(
+            lambda: catalogo_sociedades.quitar(estado["lista"], actual),
+            f"Se quitó {actual}.",
+            None,
+        )
+
+    def restaurar() -> None:
+        if not messagebox.askyesno(
+            "Restaurar lista inicial",
+            "¿Volver a la lista inicial de sociedades?\n\n"
+            "Se perderán las sociedades que hayas agregado, modificado o quitado.",
+        ):
+            return
+        try:
+            nueva = catalogo_sociedades.restaurar_iniciales()
+        except (ValueError, OSError) as exc:
+            messagebox.showerror("No se pudo restaurar", str(exc))
+            return
+        log("Se restauró la lista inicial de sociedades.")
+        mostrar(nueva)
+        habilitar_edicion(True)
+        avisar("Se restauró la lista inicial.")
+
+    def habilitar_edicion(habilitar: bool) -> None:
+        for boton in (btn_agregar, btn_guardar, btn_quitar):
+            boton.config(state="normal" if habilitar else "disabled")
+
+    lista.bind("<<ListboxSelect>>", al_seleccionar)
+    btn_agregar.config(command=agregar)
+    btn_guardar.config(command=guardar_cambios)
+    btn_quitar.config(command=quitar)
+    btn_restaurar.config(command=restaurar)
+
+    try:
+        mostrar(catalogo_sociedades.cargar())
+    except ValueError as exc:
+        # Archivo dañado: solo queda disponible "Restaurar lista inicial".
+        habilitar_edicion(False)
+        avisar(str(exc), error=True)
+
+    frame.pack(fill="both", expand=True)
+    # Exponer widgets para los tests.
+    frame.btn_atras = btn_atras
+    frame.lista = lista
+    frame.entry_codigo = entry_codigo
+    frame.entry_nombre = entry_nombre
+    frame.btn_agregar = btn_agregar
+    frame.btn_guardar = btn_guardar
+    frame.btn_quitar = btn_quitar
+    frame.btn_restaurar = btn_restaurar
+    frame.lbl_total = lbl_total
+    frame.estado_var = estado_var
+    frame.sociedades = lambda: list(estado["lista"])
+    frame.al_seleccionar = al_seleccionar
+    return frame
 
 
 # Qué vista abre cada card del menú.
@@ -682,7 +1018,21 @@ def construir_menu(root: tk.Tk) -> tk.Frame:
         card.grid(row=indice // 2, column=indice % 2, padx=8, pady=6)
         botones[opcion.clave] = boton
 
+    # En la esquina superior derecha con `place`: un botón más debajo de las
+    # cards haría que el menú dejara de caber en la ventana fija.
+    btn_sociedades = branding.RoundedButton(
+        frame_menu,
+        text="Editar sociedades",
+        style="tertiary",
+        font=("Helvetica", 9),
+        padx=8,
+        pady=2,
+        command=lambda: abrir_sociedades(root, frame_menu),
+    )
+    btn_sociedades.place(relx=1.0, x=-12, y=12, anchor="ne")
+
     frame_menu.botones = botones
+    frame_menu.btn_sociedades = btn_sociedades
     return frame_menu
 
 
@@ -714,6 +1064,13 @@ def crear_app() -> tk.Tk:
 def main() -> None:
     archivo_log = configurar_logging()
     log(f"Iniciando {TITULO_APP}" + (f" — log en {archivo_log}" if archivo_log else ""))
+    try:
+        ruta, creado = catalogo_sociedades.asegurar_archivo()
+        if creado:
+            log(f"Primer arranque: se creó la lista de sociedades en {ruta}")
+    except (ValueError, OSError) as exc:
+        # No bloquea el arranque: las vistas muestran el problema al abrirse.
+        log(f"No se pudo preparar la lista de sociedades: {exc}")
 
     root = crear_app()
     # El splash se cierra justo cuando la ventana está lista para verse.

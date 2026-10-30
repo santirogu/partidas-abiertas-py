@@ -13,8 +13,8 @@ qué cambia cuando la app corre desde el `.exe` en vez de
   temporal `_MEIPASS`. `salida/` queda al lado del `.exe`; el logo se lee
   de `_MEIPASS/resources/` (embebido y de solo lectura).
 
-Este proyecto no tiene archivo de entrada que edite el usuario (los datos
-salen de SAP), así que no hay carpeta `entrada/`.
+La lista de sociedades vive en `configuracion/` (junto al `.exe`); la
+administra el usuario desde la app. No hay carpeta `entrada/`.
 """
 
 from __future__ import annotations
@@ -40,6 +40,9 @@ SALIDA_DIR = PROJECT_ROOT / "salida"
 # El `.exe` no tiene consola: sin un archivo de log no hay forma de saber
 # qué falló en el equipo del usuario.
 LOGS_DIR = SALIDA_DIR / "logs"
+# Datos que el usuario administra desde la app (p. ej. la lista de
+# sociedades). Junto al `.exe` para que sobreviva a las actualizaciones.
+CONFIG_DIR = PROJECT_ROOT / "configuracion"
 
 
 # ---------------------------------------------------------------------------

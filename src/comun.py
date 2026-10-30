@@ -6,7 +6,8 @@ distintas (eso rompió el minimizado antes de las capturas). Aquí viven una
 sola vez:
 
 - Identidad de la app (`TITULO_APP`, `TITULAR`).
-- Catálogo de sociedades y validación de las entradas comunes.
+- Validación de las entradas comunes (las sociedades se validan contra la
+  lista que administra el usuario, ver `sociedades.py`).
 - Logging a consola y a `salida/logs/app.log`.
 - `ejecutar()`: traduce los errores COM (suelen venir vacíos) a mensajes
   que dicen qué paso falló.
@@ -32,6 +33,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
+import sociedades as catalogo_sociedades
 from paths import LOGS_DIR
 
 # ---------------------------------------------------------------------------
@@ -48,34 +50,30 @@ TITULAR = "El Hub de ISA"
 # CATÁLOGOS Y VALIDACIONES
 # ---------------------------------------------------------------------------
 
-# Lista oficial de sociedades (confirmada el 2026-10-28; coincide con las
-# 28 que salen en el export de ejemplo de FBL1N). En orden alfabético.
-SOCIEDADES: tuple[str, ...] = (
-    "AM", "ARAU", "BOSQ", "CABA", "CEYT", "CTMP", "HUBD",
-    "INCO", "INNO", "INTE", "ISA", "ISAP", "ISAV", "ITCH",
-    "ITCO", "LAGO", "MAIP", "PDI", "REP", "REPD", "RIOS",
-    "RLOA", "RORB", "RPAE", "TELE", "TELP", "TRAN", "XM",
-)  # fmt: skip
-
 # Formato en que el usuario escribe y lee las fechas (el de SAP en ISA).
 FORMATO_FECHA_USUARIO = "%d.%m.%Y"
 
 
-def validar_sociedades(sociedades: Iterable[str]) -> list[str]:
-    """Normaliza (strip/upper) y valida contra `SOCIEDADES`.
+def validar_sociedades(
+    sociedades: Iterable[str], catalogo: Iterable[str] | None = None
+) -> list[str]:
+    """Normaliza (strip/upper) y valida contra la lista de sociedades del
+    usuario (`catalogo`, o la de `configuracion/` si no se pasa).
 
-    Devuelve las sociedades sin duplicados y en el orden del catálogo, o
-    lanza `ValueError` si no hay ninguna o alguna no existe.
+    Devuelve las sociedades sin duplicados y en el orden de la lista, o
+    lanza `ValueError` si no hay ninguna o alguna no está en la lista.
     """
     elegidas = {s.strip().upper() for s in sociedades if s and s.strip()}
     if not elegidas:
         raise ValueError("Selecciona al menos una sociedad.")
-    invalidas = sorted(elegidas - set(SOCIEDADES))
+    validas = list(catalogo) if catalogo is not None else catalogo_sociedades.codigos()
+    invalidas = sorted(elegidas - set(validas))
     if invalidas:
         raise ValueError(
-            f"Sociedad no válida: {', '.join(invalidas)}. Las válidas son: {', '.join(SOCIEDADES)}."
+            f"Sociedad no válida: {', '.join(invalidas)}. No está en la lista de "
+            "sociedades; agrégala desde «Editar sociedades»."
         )
-    return [s for s in SOCIEDADES if s in elegidas]
+    return [s for s in validas if s in elegidas]
 
 
 def validar_fecha_clave(valor: date | str) -> date:
@@ -437,10 +435,22 @@ def diagnostico_sap(session) -> Iterator[None]:
 
 
 def resumir_seleccion(
-    transaccion: str, sociedades: list[str], fecha_clave: date | None = None
+    transaccion: str,
+    sociedades: list[str],
+    fecha_clave: date | None = None,
+    catalogo: Iterable[str] | None = None,
 ) -> str:
-    """`FBL5N · AM · fecha clave 29.10.2026`, para mensajes al usuario."""
-    if len(sociedades) == len(SOCIEDADES):
+    """`FBL5N · AM · fecha clave 29.10.2026`, para mensajes al usuario.
+
+    `catalogo` (o la lista del usuario) solo sirve para decir "todas las
+    sociedades"; si no se puede leer, se enumeran.
+    """
+    if catalogo is None:
+        try:
+            catalogo = catalogo_sociedades.codigos()
+        except ValueError:
+            catalogo = []
+    if set(sociedades) == set(catalogo):
         texto_sociedades = "todas las sociedades"
     elif len(sociedades) <= 5:
         texto_sociedades = ", ".join(sociedades)

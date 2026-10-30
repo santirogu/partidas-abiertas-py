@@ -14,8 +14,12 @@ Especificación de los 4 flujos a partir de las grabaciones de
   más: no hay procesamiento del Excel.
 - El **semáforo de antigüedad queda fuera del alcance** (lo hace otra
   persona del equipo).
-- Sociedades: la lista oficial son las 28 de `comun.SOCIEDADES`. El
-  usuario puede elegir todas o algunas.
+- Sociedades: la lista la administra el usuario desde la pantalla
+  «Sociedades» (`configuracion/sociedades.json`). La inicial son las 24
+  de `Sociedades.xlsx` (2026-10-29): frente a la lista anterior salen
+  INNO, REP, TELE, TELP y XM y entra INVI (INVI no aparece en ningún
+  export de ejemplo: falta confirmar el código). En cada descarga se
+  eligen todas o algunas.
 - Fecha clave: la elige el usuario; por defecto, hoy.
 
 ## El proceso (según la reunión)

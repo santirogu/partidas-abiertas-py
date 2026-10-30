@@ -7,8 +7,12 @@ venv/
 .env
 .ruff_cache/
 
-# Todo lo que genera la app (exports de SAP, Excel procesados y logs)
+# Todo lo que genera la app (exports de SAP y logs)
 salida/
+
+# Datos que el usuario administra desde la app (lista de sociedades).
+# La lista inicial versionada está en resources/sociedades_iniciales.json.
+configuracion/
 
 # Exports reales de SAP usados como ejemplo: pueden traer datos
 # financieros, así que no se versionan.

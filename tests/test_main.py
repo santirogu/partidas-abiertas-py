@@ -20,6 +20,7 @@ import fbl1n
 import fbl5n
 import main
 import paths
+import sociedades
 
 
 class _TkTestCase(unittest.TestCase):
@@ -298,16 +299,16 @@ class VistaDescargaTest(_TkTestCase):
         for clave in main.VISTAS:
             with self.subTest(clave=clave):
                 frame = self._abrir(clave)
-                self.assertEqual(list(frame.vars_sociedades), list(comun.SOCIEDADES))
-                self.assertTrue(all(v.get() for v in frame.vars_sociedades.values()))
+                self.assertEqual(list(frame.selector.variables), sociedades.codigos())
+                self.assertTrue(all(v.get() for v in frame.selector.variables.values()))
                 frame.btn_atras.invoke()
 
     def test_none_and_all_buttons_toggle_every_company(self) -> None:
         frame = self._abrir("deudores")
-        frame.btn_ninguna.invoke()
-        self.assertFalse(any(v.get() for v in frame.vars_sociedades.values()))
-        frame.btn_todas.invoke()
-        self.assertTrue(all(v.get() for v in frame.vars_sociedades.values()))
+        frame.selector.btn_ninguna.invoke()
+        self.assertFalse(any(v.get() for v in frame.selector.variables.values()))
+        frame.selector.btn_todas.invoke()
+        self.assertTrue(all(v.get() for v in frame.selector.variables.values()))
 
     def test_button_names_the_transaction(self) -> None:
         for clave, transaccion in (("acreedores", "FBL1N"), ("maestro_cuentas", "Y_FI_GRL_004")):
@@ -339,15 +340,15 @@ class VistaDescargaTest(_TkTestCase):
 
     def test_download_button_passes_option_companies_and_date(self) -> None:
         frame = self._abrir("deudores")
-        frame.btn_ninguna.invoke()
-        frame.vars_sociedades["ISA"].set(True)
-        frame.vars_sociedades["XM"].set(True)
+        frame.selector.btn_ninguna.invoke()
+        frame.selector.variables["ISA"].set(True)
+        frame.selector.variables["TRAN"].set(True)
         frame.entry_fecha.set_date(date(2026, 9, 30))
         with patch("main._descargar_handler") as handler:
             frame.btn_descargar.invoke()
         args = handler.call_args[0]
         self.assertEqual(args[1].clave, "deudores")
-        self.assertEqual(args[2], ["ISA", "XM"])
+        self.assertEqual(args[2], ["ISA", "TRAN"])
         self.assertEqual(args[3], date(2026, 9, 30))
         self.assertIs(args[5], frame.btn_descargar)
         self.assertIs(args[6], frame.btn_atras)
@@ -450,11 +451,11 @@ class DescargarHandlerTest(_TkTestCase):
 
     def test_confirmation_warns_about_clipboard_and_summarizes_companies(self) -> None:
         with patch("main.messagebox.askyesno", return_value=False) as mock_ask:
-            self._llamar(sociedades=comun.SOCIEDADES)
+            self._llamar(sociedades=sociedades.codigos())
         titulo, mensaje = mock_ask.call_args[0][:2]
         self.assertEqual(titulo, "Confirmar descarga de FBL1N")
         self.assertIn("portapapeles", mensaje)
-        self.assertIn("todas las sociedades (28)", mensaje)
+        self.assertIn("todas las sociedades (24)", mensaje)
         self.assertIn("28.10.2026", mensaje)
 
     def test_confirmation_without_key_date(self) -> None:
@@ -491,9 +492,9 @@ class DescargarHandlerTest(_TkTestCase):
             self._sync_thread(),
             patch.multiple("fbl1n", **mocks),
         ):
-            self._llamar(sociedades=["xm", "ISA"])
+            self._llamar(sociedades=["tran", "ISA"])
         mocks["descargar"].assert_called_once_with(
-            "sesion", ["ISA", "XM"], progreso=ANY, fecha_clave=date(2026, 10, 28)
+            "sesion", ["ISA", "TRAN"], progreso=ANY, fecha_clave=date(2026, 10, 28)
         )
         self.assertIn("FBL1N_x.xlsx", mock_info.call_args[0][1])
         self.assertEqual(str(self.button["state"]), "normal")
@@ -571,6 +572,172 @@ class DescargarHandlerTest(_TkTestCase):
             patch.multiple("fbl1n", get_sap_session=MagicMock(), descargar=descargar),
         ):
             self._llamar()
+
+
+def _vista_abierta(root: tk.Misc, atributo: str) -> tk.Frame:
+    """La vista empaquetada que expone `atributo` (las vistas que abre un
+    botón no se devuelven al test)."""
+    return next(
+        w for w in root.winfo_children() if hasattr(w, atributo) and w.winfo_manager() == "pack"
+    )
+
+
+class SelectorSociedadesTest(_TkTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.root._logo_ref = None
+        self.parent = tk.Frame(self.root)
+        self.parent.pack(fill="both", expand=True)
+
+    def test_reads_the_user_list(self) -> None:
+        with helpers.sociedades_temporales(["AM", "ISA"]):
+            frame = main.abrir_acreedores(self.root, self.parent)
+        self.assertEqual(list(frame.selector.variables), ["AM", "ISA"])
+
+    def test_edit_link_opens_sociedades_and_refreshes_on_back(self) -> None:
+        """Al volver de "Sociedades", las casillas reflejan la lista nueva:
+        las que estaban conservan su marca y las nuevas aparecen marcadas."""
+        with helpers.sociedades_temporales(["AM", "ISA"]):
+            frame = main.abrir_acreedores(self.root, self.parent)
+            frame.selector.variables["AM"].set(False)
+            frame.selector.btn_editar.invoke()
+            admin = _vista_abierta(self.root, "btn_agregar")
+            admin.entry_codigo.insert(0, "TRAN")
+            admin.btn_agregar.invoke()
+            admin.btn_atras.invoke()
+        self.assertEqual(frame.winfo_manager(), "pack")
+        variables = frame.selector.variables
+        self.assertEqual(list(variables), ["AM", "ISA", "TRAN"])
+        self.assertEqual([v.get() for v in variables.values()], [False, True, True])
+
+    def test_damaged_list_disables_download(self) -> None:
+        with helpers.sociedades_temporales() as archivo:
+            archivo.parent.mkdir(parents=True, exist_ok=True)
+            archivo.write_text("{dañado", encoding="utf-8")
+            frame = main.abrir_acreedores(self.root, self.parent)
+        self.assertFalse(frame.selector.valido)
+        self.assertEqual(frame.btn_descargar.cget("state"), "disabled")
+        self.assertIn("Restaurar lista inicial", frame.selector.lbl_error.cget("text"))
+
+    def test_many_companies_get_a_scrollbar(self) -> None:
+        """La ventana es fija: con más de 6 filas de casillas, van en un
+        área con barra de desplazamiento."""
+        with helpers.sociedades_temporales([f"S{i:02d}" for i in range(50)]):
+            frame = main.abrir_acreedores(self.root, self.parent)
+        self.assertTrue(frame.selector.con_desplazamiento)
+        frame.btn_atras.invoke()
+        frame = main.abrir_acreedores(self.root, self.parent)
+        self.assertFalse(frame.selector.con_desplazamiento)
+
+
+class AbrirSociedadesTest(_TkTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.root._logo_ref = None
+        self.parent = tk.Frame(self.root)
+        self.parent.pack(fill="both", expand=True)
+        contexto = helpers.sociedades_temporales(["AM", "ISA", "TRAN"])
+        contexto.__enter__()
+        self.addCleanup(contexto.__exit__, None, None, None)
+        self.frame = main.abrir_sociedades(self.root, self.parent)
+
+    def _seleccionar(self, codigo: str) -> None:
+        indice = [s.codigo for s in self.frame.sociedades()].index(codigo)
+        self.frame.lista.selection_clear(0, "end")
+        self.frame.lista.selection_set(indice)
+        # Lo mismo que hace <<ListboxSelect>> al hacer clic.
+        self.frame.al_seleccionar()
+
+    def _escribir(self, codigo: str, nombre: str = "") -> None:
+        self.frame.entry_codigo.delete(0, "end")
+        self.frame.entry_codigo.insert(0, codigo)
+        self.frame.entry_nombre.delete(0, "end")
+        self.frame.entry_nombre.insert(0, nombre)
+
+    def test_shows_list_and_total(self) -> None:
+        self.assertEqual(self.frame.lista.size(), 3)
+        self.assertEqual(self.frame.lbl_total.cget("text"), "3 sociedades")
+        self.assertEqual(self.parent.winfo_manager(), "")
+
+    def test_selecting_fills_the_form(self) -> None:
+        self._seleccionar("ISA")
+        self.assertEqual(self.frame.entry_codigo.get(), "ISA")
+
+    def test_add_saves_immediately(self) -> None:
+        self._escribir("rios", "Ríos")
+        self.frame.btn_agregar.invoke()
+        self.assertIn(sociedades.Sociedad("RIOS", "Ríos"), sociedades.cargar())
+        self.assertEqual(self.frame.lista.size(), 4)
+        self.assertEqual(self.frame.estado_var.get(), "Se agregó RIOS.")
+
+    def test_add_duplicate_or_invalid_shows_error_and_saves_nothing(self) -> None:
+        for codigo in ("isa", "IS A", ""):
+            with self.subTest(codigo=codigo), patch("main.messagebox.showerror") as mock_err:
+                self._escribir(codigo)
+                self.frame.btn_agregar.invoke()
+                self.assertEqual(mock_err.call_args[0][0], "Datos inválidos")
+        self.assertEqual(sociedades.codigos(), ["AM", "ISA", "TRAN"])
+
+    def test_save_changes_needs_a_selection(self) -> None:
+        with patch("main.messagebox.showerror") as mock_err:
+            self.frame.btn_guardar.invoke()
+        self.assertEqual(mock_err.call_args[0][0], "Selecciona una sociedad")
+
+    def test_save_changes_updates_code_and_name(self) -> None:
+        self._seleccionar("AM")
+        self._escribir("AMZ", "Nueva")
+        self.frame.btn_guardar.invoke()
+        self.assertEqual(sociedades.codigos(), ["AMZ", "ISA", "TRAN"])
+        self.assertIn(sociedades.Sociedad("AMZ", "Nueva"), sociedades.cargar())
+
+    def test_remove_asks_for_confirmation(self) -> None:
+        self._seleccionar("ISA")
+        with patch("main.messagebox.askyesno", return_value=False):
+            self.frame.btn_quitar.invoke()
+        self.assertIn("ISA", sociedades.codigos())
+        self._seleccionar("ISA")
+        with patch("main.messagebox.askyesno", return_value=True) as mock_ask:
+            self.frame.btn_quitar.invoke()
+        self.assertIn("ISA", mock_ask.call_args[0][1])
+        self.assertEqual(sociedades.codigos(), ["AM", "TRAN"])
+
+    def test_restore_brings_back_initial_list(self) -> None:
+        with patch("main.messagebox.askyesno", return_value=True):
+            self.frame.btn_restaurar.invoke()
+        self.assertEqual(len(sociedades.codigos()), 24)
+        self.assertEqual(self.frame.lista.size(), 24)
+
+
+class SociedadesDanadasTest(_TkTestCase):
+    def test_damaged_file_only_allows_restore(self) -> None:
+        self.root._logo_ref = None
+        parent = tk.Frame(self.root)
+        parent.pack()
+        with helpers.sociedades_temporales() as archivo:
+            archivo.parent.mkdir(parents=True, exist_ok=True)
+            archivo.write_text("{dañado", encoding="utf-8")
+            frame = main.abrir_sociedades(self.root, parent)
+            self.assertEqual(frame.btn_agregar.cget("state"), "disabled")
+            self.assertEqual(frame.btn_restaurar.cget("state"), "normal")
+            self.assertIn("dañado", frame.estado_var.get())
+            with patch("main.messagebox.askyesno", return_value=True):
+                frame.btn_restaurar.invoke()
+            self.assertEqual(frame.btn_agregar.cget("state"), "normal")
+            self.assertEqual(len(sociedades.codigos()), 24)
+
+
+class MenuSociedadesTest(unittest.TestCase):
+    def test_menu_link_opens_sociedades(self) -> None:
+        root = main.crear_app()
+        root.withdraw()
+        try:
+            root.frame_menu.btn_sociedades.invoke()
+            self.assertEqual(root.frame_menu.winfo_manager(), "")
+            vista = _vista_abierta(root, "btn_agregar")
+            vista.btn_atras.invoke()
+            self.assertEqual(root.frame_menu.winfo_manager(), "pack")
+        finally:
+            root.destroy()
 
 
 class MainTest(unittest.TestCase):

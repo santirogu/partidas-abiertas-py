@@ -11,19 +11,54 @@ importar los módulos del proyecto:
 
 Así funcionan igual `python -m unittest discover tests` y
 `python -m unittest tests.test_comun`.
+
+También aísla la lista de sociedades: ningún test toca la carpeta
+`configuracion/` real (ver "LISTA DE SOCIEDADES" abajo).
 """
 
 from __future__ import annotations
 
+import atexit
+import contextlib
+import shutil
 import sys
+import tempfile
 import types
+from collections.abc import Iterator
 from pathlib import Path
+from unittest.mock import patch
 
 import openpyxl
 
 SRC_DIR = Path(__file__).resolve().parent.parent / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
+
+import sociedades
+
+# ---------------------------------------------------------------------------
+# LISTA DE SOCIEDADES
+# ---------------------------------------------------------------------------
+
+# La suite usa una copia de la lista inicial en una carpeta temporal: así
+# ningún test escribe en `configuracion/sociedades.json` del repo.
+_CONFIG_SUITE = Path(tempfile.mkdtemp(prefix="partidas-config-"))
+sociedades.ARCHIVO = _CONFIG_SUITE / "sociedades.json"
+atexit.register(shutil.rmtree, _CONFIG_SUITE, ignore_errors=True)
+
+
+@contextlib.contextmanager
+def sociedades_temporales(codigos: list[str] | None = None) -> Iterator[Path]:
+    """Lista de sociedades propia de un test (la inicial, o `codigos`), para
+    los tests que la modifican sin afectar a los demás."""
+    with (
+        tempfile.TemporaryDirectory() as carpeta,
+        patch.object(sociedades, "ARCHIVO", Path(carpeta) / "sociedades.json"),
+    ):
+        if codigos is not None:
+            sociedades.guardar([sociedades.Sociedad(c) for c in codigos])
+        yield sociedades.ARCHIVO
+
 
 # ---------------------------------------------------------------------------
 # SESIÓN SAP FALSA

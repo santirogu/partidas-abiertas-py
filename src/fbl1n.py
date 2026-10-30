@@ -32,7 +32,6 @@ from datetime import date
 from pathlib import Path
 
 from comun import (
-    SOCIEDADES,
     abrir_transaccion,
     cargar_valor_unico,
     configurar_logging,
@@ -54,6 +53,7 @@ from comun import (
     verificar_resultado,
 )
 from paths import SALIDA_DIR
+from sociedades import codigos as codigos_sociedades
 
 # ---------------------------------------------------------------------------
 # CONFIGURACIÓN
@@ -180,9 +180,10 @@ def main(argv: list[str] | None = None) -> int:
     if not argv:
         print("Uso: python src/fbl1n.py FECHA_CLAVE [SOCIEDAD ...]", file=sys.stderr)
         return 2
-    fecha_clave, sociedades = argv[0], argv[1:] or list(SOCIEDADES)
+    fecha_clave, elegidas = argv[0], argv[1:]
     configurar_logging()
     try:
+        sociedades = elegidas or codigos_sociedades()
         validar_sociedades(sociedades)
         validar_fecha_clave(fecha_clave)
         validar_configuracion()

@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import helpers
 
 import comun
+import sociedades
 import y_fi_grl_004
 
 
@@ -27,8 +28,8 @@ class PasosTest(unittest.TestCase):
         session = helpers.MockSession()
         clip = helpers.fake_win32clipboard()
         with patch.dict(sys.modules, {"win32clipboard": clip}):
-            y_fi_grl_004.seleccionar_sociedades(session, ["ISA", "XM"])
-        self.assertEqual(clip.contenido[0], "ISA\r\nXM")
+            y_fi_grl_004.seleccionar_sociedades(session, ["ISA", "TRAN"])
+        self.assertEqual(clip.contenido[0], "ISA\r\nTRAN")
         self.assertEqual(
             session.actions,
             [
@@ -141,7 +142,7 @@ class MainEntryPointTest(unittest.TestCase):
             codigo, out, _ = self._main([])
         self.assertEqual(codigo, 0)
         self.assertIn("OK:", out)
-        self.assertEqual(descargar.call_args[0][1], list(comun.SOCIEDADES))
+        self.assertEqual(descargar.call_args[0][1], sociedades.codigos())
 
 
 if __name__ == "__main__":

@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "sociedades": [
+    {
+      "codigo": "AM",
+      "nombre": ""
+    },
+    {
+      "codigo": "ARAU",
+      "nombre": ""
+    },
+    {
+      "codigo": "BOSQ",
+      "nombre": ""
+    },
+    {
+      "codigo": "CABA",
+      "nombre": ""
+    },
+    {
+      "codigo": "CEYT",
+      "nombre": ""
+    },
+    {
+      "codigo": "CTMP",
+      "nombre": ""
+    },
+    {
+      "codigo": "HUBD",
+      "nombre": ""
+    },
+    {
+      "codigo": "INCO",
+      "nombre": ""
+    },
+    {
+      "codigo": "INTE",
+      "nombre": ""
+    },
+    {
+      "codigo": "INVI",
+      "nombre": ""
+    },
+    {
+      "codigo": "ISA",
+      "nombre": ""
+    },
+    {
+      "codigo": "ISAP",
+      "nombre": ""
+    },
+    {
+      "codigo": "ISAV",
+      "nombre": ""
+    },
+    {
+      "codigo": "ITCH",
+      "nombre": ""
+    },
+    {
+      "codigo": "ITCO",
+      "nombre": ""
+    },
+    {
+      "codigo": "LAGO",
+      "nombre": ""
+    },
+    {
+      "codigo": "MAIP",
+      "nombre": ""
+    },
+    {
+      "codigo": "PDI",
+      "nombre": ""
+    },
+    {
+      "codigo": "REPD",
+      "nombre": ""
+    },
+    {
+      "codigo": "RIOS",
+      "nombre": ""
+    },
+    {
+      "codigo": "RLOA",
+      "nombre": ""
+    },
+    {
+      "codigo": "RORB",
+      "nombre": ""
+    },
+    {
+      "codigo": "RPAE",
+      "nombre": ""
+    },
+    {
+      "codigo": "TRAN",
+      "nombre": ""
+    }
+  ]
+}

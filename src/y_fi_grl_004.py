@@ -34,7 +34,6 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from comun import (
-    SOCIEDADES,
     abrir_transaccion,
     configurar_logging,
     crear_avisador,
@@ -51,6 +50,7 @@ from comun import (
     verificar_resultado,
 )
 from paths import SALIDA_DIR
+from sociedades import codigos as codigos_sociedades
 
 # ---------------------------------------------------------------------------
 # CONFIGURACIÓN
@@ -152,9 +152,9 @@ def main(argv: list[str] | None = None) -> int:
     if any(arg.startswith("-") for arg in argv):
         print("Uso: python src/y_fi_grl_004.py [SOCIEDAD ...]", file=sys.stderr)
         return 2
-    sociedades = argv or list(SOCIEDADES)
     configurar_logging()
     try:
+        sociedades = argv or codigos_sociedades()
         validar_sociedades(sociedades)
         session = get_sap_session()
         carpeta, nombre = descargar(session, sociedades)

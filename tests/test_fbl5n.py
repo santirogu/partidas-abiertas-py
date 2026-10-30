@@ -14,6 +14,7 @@ import helpers
 
 import comun
 import fbl5n
+import sociedades
 
 DISPOSICION = "/PARTABIERTA"
 
@@ -52,7 +53,7 @@ class PasosTest(unittest.TestCase):
     def test_seleccionar_sociedades_uses_dd_bukrs(self) -> None:
         session = helpers.MockSession()
         with patch.dict(sys.modules, {"win32clipboard": helpers.fake_win32clipboard()}):
-            fbl5n.seleccionar_sociedades(session, ["XM"])
+            fbl5n.seleccionar_sociedades(session, ["TRAN"])
         self.assertEqual(
             session.actions[0], ("wnd[0]/usr/btn%_DD_BUKRS_%_APP_%-VALU_PUSH", "press")
         )
@@ -98,7 +99,7 @@ class DescargarTest(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_runs_steps_in_recording_order(self) -> None:
-        fbl5n.descargar(self.session, ["ISA", "XM"], date(2026, 10, 28), self.carpeta)
+        fbl5n.descargar(self.session, ["ISA", "TRAN"], date(2026, 10, 28), self.carpeta)
         orden = [
             ("wnd[0]/tbar[0]/okcd", "text=", "/nFBL5N"),
             ("wnd[0]/usr/btn%_DD_KUNNR_%_APP_%-VALU_PUSH", "press"),
@@ -113,7 +114,7 @@ class DescargarTest(unittest.TestCase):
         ]
         indices = [self.session.actions.index(a) for a in orden]
         self.assertEqual(indices, sorted(indices))
-        self.assertEqual(self.clip.contenido[0], "ISA\r\nXM")
+        self.assertEqual(self.clip.contenido[0], "ISA\r\nTRAN")
 
     def test_saves_with_fbl5n_prefix(self) -> None:
         carpeta, nombre = fbl5n.descargar(self.session, ["ISA"], "28.10.2026", self.carpeta)
@@ -173,7 +174,7 @@ class MainEntryPointTest(unittest.TestCase):
             codigo, out, _ = self._main(["28.10.2026"])
         self.assertEqual(codigo, 0)
         self.assertIn("FBL5N_x.xlsx", out)
-        self.assertEqual(descargar.call_args[0][1], list(comun.SOCIEDADES))
+        self.assertEqual(descargar.call_args[0][1], sociedades.codigos())
 
 
 if __name__ == "__main__":

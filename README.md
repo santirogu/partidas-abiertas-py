@@ -19,8 +19,9 @@ original que exporta SAP en la carpeta `salida/`, junto al ejecutable.
 
 ### Cómo se usa una opción
 
-1. Marca las sociedades (por defecto, las 28). En Acreedores, Deudores y
-   Partidas de mayor elige también la fecha clave (por defecto, hoy).
+1. Marca las sociedades (por defecto, todas las de tu lista). En
+   Acreedores, Deudores y Partidas de mayor elige también la fecha clave
+   (por defecto, hoy).
 2. Pulsa **Descargar …** y confirma. La app usa el portapapeles para
    pasarle las listas a SAP, así que reemplaza lo que tengas copiado.
 3. No uses SAP mientras corre. Al terminar, el archivo queda en `salida/`
@@ -37,7 +38,26 @@ las que tienen `X` en la columna PI del Maestro de cuentas más reciente de
 `salida/`. Descarga primero el Maestro de cuentas; la vista de Partidas de
 mayor muestra qué archivo va a usar.
 
-También se puede correr cada opción desde la terminal:
+### Cambiar la lista de sociedades
+
+La lista **no está en el código**: se administra desde la app, en
+**"Editar sociedades"** (arriba a la derecha del menú) o en **"Editar
+lista"** (junto a "Todas / Ninguna" en cada descarga).
+
+- **Agregar:** escribe el código (de 1 a 4 letras o números) y, si
+  quieres, el nombre, y pulsa **Agregar**.
+- **Modificar:** toca la sociedad en la lista, cambia el código o el nombre
+  y pulsa **Guardar cambios**.
+- **Quitar:** toca la sociedad y pulsa **Quitar** (pide confirmación).
+- **Restaurar lista inicial:** vuelve a las 24 sociedades de partida.
+
+Cada cambio se guarda al instante en `configuracion/sociedades.json`,
+junto al `.exe`: cada analista tiene su propia lista y la conserva al
+actualizar la app. La primera vez se crea con la lista inicial
+(`resources/sociedades_iniciales.json`).
+
+También se puede correr cada opción desde la terminal (sin sociedades,
+usa todas las de la lista):
 
 ```bash
 python src/fbl1n.py 28.10.2026            # FBL1N, todas las sociedades
@@ -95,8 +115,9 @@ reemplaza por `tests/helpers.MockSession`.
 
 | Archivo | Tests | Qué cubre |
 |---|---|---|
-| `test_comun.py` | 75 | Validaciones, logging, conexión a SAP, COM, portapapeles, selección múltiple, calendario, disposición por nombre, exportar, cierre de la exportación, último export, verificación de resultados, diagnóstico de pantalla, archivos |
-| `test_main.py` | 49 | Ventana, menú 2×2, contrato de los módulos de flujo, vistas de descarga (incluido el maestro que necesita FAGLL03), handler (incluido el aviso de sin partidas), footer, errores, splash |
+| `test_comun.py` | 76 | Validaciones, logging, conexión a SAP, COM, portapapeles, selección múltiple, calendario, disposición por nombre, exportar, cierre de la exportación, último export, verificación de resultados, diagnóstico de pantalla, archivos |
+| `test_main.py` | 63 | Ventana, menú 2×2, contrato de los módulos de flujo, vistas de descarga (incluido el maestro que necesita FAGLL03), selector de sociedades, pantalla «Sociedades», handler (incluido el aviso de sin partidas), footer, errores, splash |
+| `test_sociedades.py` | 27 | Lista inicial, validación de códigos y nombres, agregar/modificar/quitar, guardado seguro, archivo dañado, restaurar |
 | `test_fagll03.py` | 20 | Cuentas con PI = X del maestro, búsqueda del último maestro, cada paso de FAGLL03, orden del flujo, CLI |
 | `test_fbl1n.py` | 21 | Cada paso de FBL1N, orden del flujo completo, validaciones, CLI |
 | `test_branding.py` | 17 | `RoundedButton` (estilos, estado, `invoke`, reconfiguración) y logo |
@@ -115,14 +136,17 @@ partidas-abiertas-py/
 │   ├── fbl5n.py       # flujo FBL5N (deudores)
 │   ├── y_fi_grl_004.py  # flujo Y_FI_GRL_004 (maestro de cuentas)
 │   ├── fagll03.py     # flujo FAGLL03 (partidas de mayor; cuentas del maestro)
+│   ├── sociedades.py  # lista de sociedades del usuario (configuracion/sociedades.json)
 │   ├── branding.py    # paleta, logo, RoundedButton
 │   └── paths.py       # rutas dev/empaquetado
 ├── tests/             # un test_<modulo>.py por módulo + helpers.py
 ├── resources/
 │   ├── logo.png       # se empaqueta
+│   ├── sociedades_iniciales.json  # lista inicial de sociedades, se empaqueta
 │   └── grabaciones/   # grabaciones .vbs de SAP (referencia, NO se empaquetan)
 ├── docs/
 │   └── fichas-flujos.md
+├── configuracion/     # RUNTIME (ignorada): sociedades.json, la lista del usuario
 ├── salida/            # RUNTIME (ignorada): exports de SAP y logs/
 ├── pyproject.toml     # metadatos + configuración de ruff
 ├── requirements.txt / requirements-dev.txt
