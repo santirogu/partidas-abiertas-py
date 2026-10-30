@@ -102,6 +102,55 @@ python3 -m venv .venv
 En el resto de este README los comandos usan `.venv/bin/python`; en
 Windows cámbialo por `.venv/Scripts/python`.
 
+## Generar el `.exe` (en Windows)
+
+PyInstaller no genera ejecutables de Windows desde otro sistema: el `.exe`
+se arma **en un equipo con Windows**. En Git Bash (por ejemplo, la terminal
+de VS Code), dentro de la carpeta del proyecto:
+
+```bash
+git pull
+```
+
+```bash
+.venv/Scripts/python -m pip install -r requirements-dev.txt
+```
+
+```bash
+.venv/Scripts/python -m PyInstaller PartidasAbiertas.spec --clean --noconfirm
+```
+
+El resultado es **`dist/PartidasAbiertas.exe`** (un solo archivo, sin
+consola). La carpeta `build/` es temporal y se puede borrar.
+
+**Qué lleva adentro** (`PartidasAbiertas.spec`): el código, los 4 flujos
+(declarados a mano porque la app los carga con `importlib`), el logo, la
+lista inicial de sociedades y los datos de idioma del calendario. Las
+grabaciones `.vbs` y los ejemplos no se empaquetan. Sin compresión UPX,
+para que el antivirus corporativo no lo marque por error.
+
+### Revisión antes de entregarlo
+
+1. Copia `PartidasAbiertas.exe` a una carpeta nueva y ábrelo con doble
+   clic: aparece la pantalla de carga y luego la ventana.
+2. Junto al `.exe` se crean `configuracion/sociedades.json` (24
+   sociedades) y `salida/logs/app.log`.
+3. Se ve el logo en el menú y en las vistas.
+4. "Editar sociedades" abre la lista; agregar y quitar una de prueba.
+5. Con SAP abierto: una descarga con una o dos sociedades deja el archivo
+   en `salida/`.
+6. Con SAP cerrado: la descarga muestra un error claro (no se cierra la
+   app).
+
+### Entrega y actualizaciones
+
+- Al usuario solo se le entrega el `.exe`. Las carpetas `configuracion/` y
+  `salida/` las crea la app.
+- Para actualizar, se reemplaza el `.exe`: la lista de sociedades del
+  usuario (`configuracion/`) se conserva.
+- Si el antivirus lo bloquea, hay que pedir a soporte que lo autorice; es
+  común con ejecutables hechos con PyInstaller.
+
 ## Pruebas y calidad
 
 ```bash
@@ -116,7 +165,7 @@ reemplaza por `tests/helpers.MockSession`.
 | Archivo | Tests | Qué cubre |
 |---|---|---|
 | `test_comun.py` | 76 | Validaciones, logging, conexión a SAP, COM, portapapeles, selección múltiple, calendario, disposición por nombre, exportar, cierre de la exportación, último export, verificación de resultados, diagnóstico de pantalla, archivos |
-| `test_main.py` | 63 | Ventana, menú 2×2, contrato de los módulos de flujo, vistas de descarga (incluido el maestro que necesita FAGLL03), selector de sociedades, pantalla «Sociedades», handler (incluido el aviso de sin partidas), footer, errores, splash |
+| `test_main.py` | 64 | Ventana, menú 2×2, contrato de los módulos de flujo, vistas de descarga (incluido el maestro que necesita FAGLL03), selector de sociedades, pantalla «Sociedades», handler (incluido el aviso de sin partidas), footer, errores, splash |
 | `test_sociedades.py` | 27 | Lista inicial, validación de códigos y nombres, agregar/modificar/quitar, guardado seguro, archivo dañado, restaurar |
 | `test_fagll03.py` | 20 | Cuentas con PI = X del maestro, búsqueda del último maestro, cada paso de FAGLL03, orden del flujo, CLI |
 | `test_fbl1n.py` | 21 | Cada paso de FBL1N, orden del flujo completo, validaciones, CLI |
@@ -124,6 +173,7 @@ reemplaza por `tests/helpers.MockSession`.
 | `test_fbl5n.py` | 14 | Cada paso de FBL5N, orden del flujo, disposición, CLI |
 | `test_y_fi_grl_004.py` | 11 | Cada paso del maestro de cuentas, orden del flujo (sin fecha ni disposición), CLI |
 | `test_paths.py` | 7 | Rutas en modo dev y empaquetado |
+| `test_spec.py` | 6 | Que el `.spec` empaquete los 4 flujos y los recursos que la app lee |
 
 ## Estructura
 
@@ -148,6 +198,7 @@ partidas-abiertas-py/
 │   └── fichas-flujos.md
 ├── configuracion/     # RUNTIME (ignorada): sociedades.json, la lista del usuario
 ├── salida/            # RUNTIME (ignorada): exports de SAP y logs/
+├── PartidasAbiertas.spec  # configuración de PyInstaller para el .exe
 ├── pyproject.toml     # metadatos + configuración de ruff
 ├── requirements.txt / requirements-dev.txt
 ├── CLAUDE.md

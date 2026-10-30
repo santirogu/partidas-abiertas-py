@@ -30,7 +30,7 @@ carpeta de red `//192.168.68.116/Compartida` (montada en
 | 1. Esqueleto | ✅ paths, branding, comun, helpers de tests, pyproject + ruff |
 | 2. GUI base | ✅ menú 2×2, 4 vistas pendientes con "← Atrás", footer, errores, splash |
 | 3. Flujos | 🟡 Los 4 implementados (FBL1N, FBL5N y FAGLL03 con `/PARTABIERTA`; Y_FI_GRL_004 sin disposición). Primera prueba real de FBL5N el 2026-10-29: la selección funcionó; falló sin partidas (corregido, ver decisiones). Falta una descarga completa en Windows |
-| 4. Empaquetado | — |
+| 4. Empaquetado | ✅ `PartidasAbiertas.spec` + `tests/test_spec.py`; dry-run en macOS OK (2026-10-29). Falta generar y probar el `.exe` en Windows |
 | 5. Docs y skills | — |
 | 6. Extras (cobertura, CI, lockfile) | — |
 
@@ -83,7 +83,8 @@ administra es la lista de sociedades, desde la pantalla «Sociedades».
 
 ```bash
 .venv/bin/python src/main.py
-.venv/bin/python -m unittest discover tests -v       # 256 tests
+.venv/bin/python -m unittest discover tests -v       # 263 tests
+.venv/bin/pyinstaller PartidasAbiertas.spec --clean --noconfirm   # .exe: solo en Windows
 .venv/bin/python src/fbl1n.py 28.10.2026 [ISA XM]    # CLI (solo Windows con SAP)
 .venv/bin/python src/fbl5n.py 28.10.2026 [ISA XM]
 .venv/bin/python src/y_fi_grl_004.py [ISA XM]
@@ -165,8 +166,8 @@ administra es la lista de sociedades, desde la pantalla «Sociedades».
   y nunca se sobrescribe. Cada acción se guarda al instante. Las vistas de
   descarga leen la lista al abrirse y al volver de «Sociedades»
   (`SelectorSociedades.recargar`); con más de 6 filas de casillas usan
-  barra de desplazamiento porque la ventana es fija. **Fase 4:** el `.spec`
-  debe empaquetar `resources/sociedades_iniciales.json`.
+  barra de desplazamiento porque la ventana es fija. El `.spec`
+  empaqueta `resources/sociedades_iniciales.json` (lo verifica `test_spec`).
 - **Los tests no tocan `configuracion/` real:** `tests/helpers.py` apunta
   `sociedades.ARCHIVO` a una carpeta temporal al importarse;
   `helpers.sociedades_temporales()` da a cada test una lista propia.
@@ -186,6 +187,15 @@ administra es la lista de sociedades, desde la pantalla «Sociedades».
 - **`Opcion.requiere`** declara qué opción debe descargarse antes. La
   vista muestra el archivo que usará y deshabilita el botón si falta; se
   evalúa al abrir la vista (sin polling).
+- **El `.spec` declara los flujos a mano** (`MODULOS_DE_FLUJO`): la GUI
+  los importa con `importlib` y PyInstaller no los detecta; sin eso el
+  `.exe` abre pero cada opción falla. `tests/test_spec.py` compara el spec
+  con `main.OPCIONES` y con los recursos que lee la app. Sin UPX (falsos
+  positivos de antivirus). Dry-run en macOS: el binario arranca, crea
+  `configuracion/` y `salida/` junto al ejecutable y copia la lista
+  inicial desde `_MEIPASS`.
+- **`_cerrar_splash` captura cualquier error al importar `pyi_splash`.**
+  Empaquetado sin splash (macOS), el import da `KeyError`, no `ImportError`.
 - **`helpers` tiene su propia sección en isort** (`pyproject.toml`): es
   quien agrega `src/` al `sys.path`, así que debe importarse antes que
   cualquier módulo del proyecto.

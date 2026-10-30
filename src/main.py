@@ -165,12 +165,16 @@ def _cerrar_splash() -> None:
     """Cierra el splash de PyInstaller si la app corre empaquetada.
 
     `pyi_splash` solo existe cuando el `.spec` incluye un `Splash(...)` y
-    la app corre como `.exe`; en dev (y en macOS, donde no hay splash) el
-    import falla y no hay nada que cerrar.
+    la app corre como `.exe`; en dev el import falla y no hay nada que
+    cerrar. Empaquetado sin splash (p. ej. el dry-run en macOS), el import
+    no da `ImportError` sino `KeyError`, por eso se captura cualquier error.
     """
     try:
         import pyi_splash  # type: ignore[import-not-found]
     except ImportError:
+        return
+    except Exception as exc:
+        log(f"No se pudo usar el splash (ignorado): {exc!r}")
         return
     try:
         if pyi_splash.is_alive():

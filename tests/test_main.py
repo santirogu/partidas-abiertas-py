@@ -253,6 +253,23 @@ class CerrarSplashTest(unittest.TestCase):
         with patch.dict(sys.modules, {"pyi_splash": None}):
             main._cerrar_splash()
 
+    def test_import_error_other_than_importerror_does_not_break_startup(self) -> None:
+        """REGRESIÓN (dry-run en macOS, 2026-10-29): empaquetado sin splash,
+        importar `pyi_splash` falla con KeyError, no con ImportError."""
+        import_original = __import__
+
+        def importar(nombre, *args, **kwargs):
+            if nombre == "pyi_splash":
+                raise KeyError("_PYI_SPLASH_IPC")
+            return import_original(nombre, *args, **kwargs)
+
+        with (
+            patch.dict(sys.modules),
+            patch("builtins.__import__", side_effect=importar),
+        ):
+            sys.modules.pop("pyi_splash", None)
+            main._cerrar_splash()
+
     def test_closes_splash_when_alive(self) -> None:
         splash = types.SimpleNamespace(is_alive=MagicMock(return_value=True), close=MagicMock())
         with patch.dict(sys.modules, {"pyi_splash": splash}):
