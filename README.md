@@ -27,6 +27,11 @@ original que exporta SAP en la carpeta `salida/`, junto al ejecutable.
    con el nombre de la transacción y la hora, p. ej.
    `salida/FBL1N_20261028_153000.xlsx`.
 
+Si SAP no encuentra partidas para lo que elegiste (p. ej. una sociedad
+sin partidas de deudores a esa fecha), la app muestra un **aviso "Sin
+partidas"** con el mensaje de SAP y no genera archivo. No es un error:
+prueba con otras sociedades u otra fecha clave.
+
 **Partidas de mayor necesita el maestro:** las cuentas que consulta son
 las que tienen `X` en la columna PI del Maestro de cuentas más reciente de
 `salida/`. Descarga primero el Maestro de cuentas; la vista de Partidas de
@@ -90,13 +95,13 @@ reemplaza por `tests/helpers.MockSession`.
 
 | Archivo | Tests | Qué cubre |
 |---|---|---|
-| `test_comun.py` | 61 | Validaciones, logging, conexión a SAP, COM, portapapeles, selección múltiple, calendario, disposición por nombre, exportar, cierre de la exportación, último export, archivos |
-| `test_main.py` | 48 | Ventana, menú 2×2, contrato de los módulos de flujo, vistas de descarga (incluido el maestro que necesita FAGLL03), handler, footer, errores, splash |
-| `test_fagll03.py` | 19 | Cuentas con PI = X del maestro, búsqueda del último maestro, cada paso de FAGLL03, orden del flujo, CLI |
-| `test_fbl1n.py` | 20 | Cada paso de FBL1N, orden del flujo completo, validaciones, CLI |
+| `test_comun.py` | 75 | Validaciones, logging, conexión a SAP, COM, portapapeles, selección múltiple, calendario, disposición por nombre, exportar, cierre de la exportación, último export, verificación de resultados, diagnóstico de pantalla, archivos |
+| `test_main.py` | 49 | Ventana, menú 2×2, contrato de los módulos de flujo, vistas de descarga (incluido el maestro que necesita FAGLL03), handler (incluido el aviso de sin partidas), footer, errores, splash |
+| `test_fagll03.py` | 20 | Cuentas con PI = X del maestro, búsqueda del último maestro, cada paso de FAGLL03, orden del flujo, CLI |
+| `test_fbl1n.py` | 21 | Cada paso de FBL1N, orden del flujo completo, validaciones, CLI |
 | `test_branding.py` | 17 | `RoundedButton` (estilos, estado, `invoke`, reconfiguración) y logo |
-| `test_fbl5n.py` | 13 | Cada paso de FBL5N, orden del flujo, disposición, CLI |
-| `test_y_fi_grl_004.py` | 10 | Cada paso del maestro de cuentas, orden del flujo (sin fecha ni disposición), CLI |
+| `test_fbl5n.py` | 14 | Cada paso de FBL5N, orden del flujo, disposición, CLI |
+| `test_y_fi_grl_004.py` | 11 | Cada paso del maestro de cuentas, orden del flujo (sin fecha ni disposición), CLI |
 | `test_paths.py` | 7 | Rutas en modo dev y empaquetado |
 
 ## Estructura

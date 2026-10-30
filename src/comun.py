@@ -367,6 +367,18 @@ ID_GUARDAR_GENERAR = "wnd[1]/tbar[0]/btn[0]"
 # grabó FBL1N no aparece (el formato quedó fijo), pero en otros sí puede.
 # Las grabaciones viejas de FBL5N/FAGLL03 la aceptan con este botón.
 ID_FORMATO_CONTINUAR = "wnd[1]/tbar[0]/btn[0]"
+# Barra de estado de la ventana principal. No está en estas grabaciones,
+# pero sí en una de activos-propios-py en este mismo SAP (Script2sox.vbs).
+ID_BARRA_ESTADO = "wnd[0]/sbar"
+
+
+class SinResultadosError(RuntimeError):
+    """SAP ejecutó el reporte pero no encontró datos para la selección.
+
+    No es una falla: la GUI lo muestra como aviso. Se distingue de un error
+    porque SAP se queda en la pantalla de selección en vez de mostrar la
+    lista.
+    """
 
 
 def existe_control(session, id_control: str) -> bool:
@@ -375,6 +387,88 @@ def existe_control(session, id_control: str) -> bool:
         return session.findById(id_control, False) is not None
     except Exception:
         return False
+
+
+def leer_barra_estado(session) -> str:
+    """Texto de la barra de estado de SAP, o "" si no se puede leer."""
+    try:
+        barra = session.findById(ID_BARRA_ESTADO, False)
+        return str(barra.text or "").strip() if barra is not None else ""
+    except Exception:
+        return ""
+
+
+def describir_pantalla(session) -> str:
+    """Qué muestra SAP ahora (ventana activa y barra de estado), para
+    agregarlo a los errores y al log. "" si no se puede leer nada."""
+    partes = []
+    try:
+        titulo = str(session.ActiveWindow.text or "").strip()
+        if titulo:
+            partes.append(f"ventana «{titulo}»")
+    except Exception:
+        pass  # Best-effort: el diagnóstico nunca debe tapar el error original.
+    mensaje = leer_barra_estado(session)
+    if mensaje:
+        partes.append(f"barra de estado «{mensaje}»")
+    return ", ".join(partes)
+
+
+@contextlib.contextmanager
+def diagnostico_sap(session) -> Iterator[None]:
+    """Si un paso de SAP falla, agrega al error lo que SAP mostraba en ese
+    momento y lo deja en el log.
+
+    Sin esto, un error como "The control could not be found by id" no dice
+    en qué pantalla quedó SAP (REGRESIÓN 2026-10-29: FBL5N seguía en la
+    pantalla de selección). `SinResultadosError` y `ValueError` pasan sin
+    cambios: ya traen un mensaje para el usuario.
+    """
+    try:
+        yield
+    except (SinResultadosError, ValueError):
+        raise
+    except Exception as exc:
+        pantalla = describir_pantalla(session)
+        if not pantalla:
+            raise
+        logger.error("Pantalla de SAP al fallar: %s", pantalla)
+        raise RuntimeError(f"{exc}\n\nEn SAP: {pantalla}.") from exc
+
+
+def resumir_seleccion(
+    transaccion: str, sociedades: list[str], fecha_clave: date | None = None
+) -> str:
+    """`FBL5N · AM · fecha clave 29.10.2026`, para mensajes al usuario."""
+    if len(sociedades) == len(SOCIEDADES):
+        texto_sociedades = "todas las sociedades"
+    elif len(sociedades) <= 5:
+        texto_sociedades = ", ".join(sociedades)
+    else:
+        texto_sociedades = f"{len(sociedades)} sociedades"
+    partes = [transaccion, texto_sociedades]
+    if fecha_clave is not None:
+        partes.append(f"fecha clave {fecha_clave:%d.%m.%Y}")
+    return " · ".join(partes)
+
+
+def verificar_resultado(session, id_campo_seleccion: str, resumen: str) -> None:
+    """Confirma que Ejecutar llevó a la lista de resultados.
+
+    Si SAP no encuentra datos, se queda en la pantalla de selección (con un
+    mensaje en la barra de estado) y los pasos siguientes fallan con errores
+    confusos. `id_campo_seleccion` es un campo que solo existe en esa
+    pantalla: si sigue ahí, no hubo resultados. Deja SAP en la pantalla
+    inicial y lanza `SinResultadosError`.
+    """
+    if not existe_control(session, id_campo_seleccion):
+        return
+    mensaje = leer_barra_estado(session)
+    volver_al_inicio(session)
+    texto = f"SAP no encontró partidas para {resumen}, así que no se generó ningún archivo."
+    if mensaje:
+        texto += f"\n\nMensaje de SAP: «{mensaje}»"
+    raise SinResultadosError(texto)
 
 
 def cargar_valor_unico(session, id_boton: str, valor: str) -> None:

@@ -29,7 +29,7 @@ carpeta de red `//192.168.68.116/Compartida` (montada en
 | 0. Fichas de los flujos | ✅ `docs/fichas-flujos.md` |
 | 1. Esqueleto | ✅ paths, branding, comun, helpers de tests, pyproject + ruff |
 | 2. GUI base | ✅ menú 2×2, 4 vistas pendientes con "← Atrás", footer, errores, splash |
-| 3. Flujos | 🟡 Los 4 implementados (FBL1N, FBL5N y FAGLL03 con `/PARTABIERTA`; Y_FI_GRL_004 sin disposición); ninguno probado aún en Windows con SAP real |
+| 3. Flujos | 🟡 Los 4 implementados (FBL1N, FBL5N y FAGLL03 con `/PARTABIERTA`; Y_FI_GRL_004 sin disposición). Primera prueba real de FBL5N el 2026-10-29: la selección funcionó; falló sin partidas (corregido, ver decisiones). Falta una descarga completa en Windows |
 | 4. Empaquetado | — |
 | 5. Docs y skills | — |
 | 6. Extras (cobertura, CI, lockfile) | — |
@@ -79,7 +79,7 @@ usuario.
 
 ```bash
 .venv/bin/python src/main.py
-.venv/bin/python -m unittest discover tests -v       # 195 tests
+.venv/bin/python -m unittest discover tests -v       # 214 tests
 .venv/bin/python src/fbl1n.py 28.10.2026 [ISA XM]    # CLI (solo Windows con SAP)
 .venv/bin/python src/fbl5n.py 28.10.2026 [ISA XM]
 .venv/bin/python src/y_fi_grl_004.py [ISA XM]
@@ -152,6 +152,19 @@ usuario.
   cuentas con partidas en FAGLL03 tienen PI = X en el maestro. Con las 28
   sociedades son ~15.466 cuentas: falta confirmar en Windows que SAP
   acepte pegar tantas.
+- **Verificar el resultado después de Ejecutar** (`verificar_resultado`).
+  Incidente del 2026-10-29: FBL5N solo con AM no tenía partidas; SAP se
+  quedó en la pantalla de selección, la app pulsó "Seleccionar
+  disposición" (SAP: "Seleccione una función válida") y falló con el
+  error 619 al buscar la lista. Ahora, si un campo de la pantalla de
+  selección (`PA_STIDA`; `SD_KTOPL-LOW` en Y_FI_GRL_004) sigue en
+  pantalla, se lanza `SinResultadosError` con el mensaje de la barra de
+  estado (`wnd[0]/sbar`), SAP vuelve al inicio y la GUI lo muestra como
+  **aviso**, no como error. En la prueba quedó validado con SAP real:
+  deudor `*`, sociedades por portapapeles, fecha clave por calendario y CME.
+- **Errores con la pantalla de SAP** (`diagnostico_sap`). Cualquier falla
+  dentro de los pasos de SAP agrega al mensaje y al log la ventana activa
+  y la barra de estado, para diagnosticar sin captura de pantalla.
 - **`Opcion.requiere`** declara qué opción debe descargarse antes. La
   vista muestra el archivo que usará y deshabilita el botón si falta; se
   evalúa al abrir la vista (sin polling).

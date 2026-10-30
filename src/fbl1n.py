@@ -37,6 +37,7 @@ from comun import (
     cargar_valor_unico,
     configurar_logging,
     crear_avisador,
+    diagnostico_sap,
     ejecutar,
     ejecutar_reporte,
     elegir_disposicion,
@@ -45,10 +46,12 @@ from comun import (
     get_sap_session,
     nombre_con_timestamp,
     pegar_seleccion_multiple,
+    resumir_seleccion,
     terminar_exportacion,
     validar_disposicion,
     validar_fecha_clave,
     validar_sociedades,
+    verificar_resultado,
 )
 from paths import SALIDA_DIR
 
@@ -142,22 +145,26 @@ def descargar(
     avisar = crear_avisador(progreso)
 
     avisar(f"FBL1N: {len(socs)} sociedad(es), fecha clave {fecha:%d.%m.%Y}")
-    avisar("Paso 1 de 7: abriendo FBL1N…")
-    abrir_transaccion(session, TRANSACCION)
-    avisar("Paso 2 de 7: seleccionando acreedores y sociedades…")
-    seleccionar_acreedores(session)
-    seleccionar_sociedades(session, socs)
-    avisar("Paso 3 de 7: fijando la fecha clave…")
-    fijar_fecha_clave(session, fecha)
-    marcar_clases_de_partida(session)
-    avisar("Paso 4 de 7: ejecutando el reporte (puede tardar varios minutos)…")
-    ejecutar_reporte(session)
-    avisar(f"Paso 5 de 7: aplicando la disposición {disposicion}…")
-    elegir_disposicion(session, disposicion)
-    avisar("Paso 6 de 7: exportando a Excel…")
-    archivo = exportar_hoja_calculo(session, carpeta, nombre)
-    avisar("Paso 7 de 7: esperando a que SAP termine de guardar…")
-    terminar_exportacion(session, archivo, TIMEOUT_ARCHIVO_SEG)
+    with diagnostico_sap(session):
+        avisar("Paso 1 de 7: abriendo FBL1N…")
+        abrir_transaccion(session, TRANSACCION)
+        avisar("Paso 2 de 7: seleccionando acreedores y sociedades…")
+        seleccionar_acreedores(session)
+        seleccionar_sociedades(session, socs)
+        avisar("Paso 3 de 7: fijando la fecha clave…")
+        fijar_fecha_clave(session, fecha)
+        marcar_clases_de_partida(session)
+        avisar("Paso 4 de 7: ejecutando el reporte (puede tardar varios minutos)…")
+        ejecutar_reporte(session)
+        verificar_resultado(
+            session, ID_CAMPO_FECHA_CLAVE, resumir_seleccion(TRANSACCION, socs, fecha)
+        )
+        avisar(f"Paso 5 de 7: aplicando la disposición {disposicion}…")
+        elegir_disposicion(session, disposicion)
+        avisar("Paso 6 de 7: exportando a Excel…")
+        archivo = exportar_hoja_calculo(session, carpeta, nombre)
+        avisar("Paso 7 de 7: esperando a que SAP termine de guardar…")
+        terminar_exportacion(session, archivo, TIMEOUT_ARCHIVO_SEG)
     avisar(f"FBL1N listo: {archivo}")
     return str(carpeta), nombre
 

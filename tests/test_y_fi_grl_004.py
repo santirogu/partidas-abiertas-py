@@ -48,6 +48,7 @@ class DescargarTest(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.carpeta = Path(self._tmp.name) / "salida"
         self.session = helpers.MockSession()
+        self.session.simular_lista_tras_ejecutar(y_fi_grl_004.ID_CAMPO_PLAN_CUENTAS)
         self._patches = [
             patch.dict(sys.modules, {"win32clipboard": helpers.fake_win32clipboard()}),
             patch("comun.esperar_archivo_listo", return_value=True),
@@ -90,6 +91,24 @@ class DescargarTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             y_fi_grl_004.descargar(self.session, ["ZZZ"], self.carpeta)
         self.assertEqual(self.session.actions, [])
+
+    def test_no_items_stops_after_execute(self) -> None:
+        """REGRESIÓN 2026-10-29: FBL5N solo con AM no tenía partidas; SAP se
+        quedó en la pantalla de selección y la app siguió hasta fallar al
+        buscar la lista de disposiciones ("control could not be found")."""
+        session = helpers.MockSession()  # sin simular la lista de resultados
+        session.mostrar("wnd[0]/sbar", "No se seleccionaron partidas")
+        with self.assertRaises(comun.SinResultadosError) as ctx:
+            y_fi_grl_004.descargar(session, ["AM"], self.carpeta)
+        self.assertIn("AM", str(ctx.exception))
+        self.assertIn("No se seleccionaron partidas", str(ctx.exception))
+        ids = [accion[0] for accion in session.actions]
+        self.assertNotIn(comun.ID_BTN_DISPOSICION, ids)
+        self.assertNotIn(comun.ID_MENU_EXPORTAR, ids)
+        self.assertEqual(
+            session.actions[-2:],
+            [("wnd[0]/tbar[0]/okcd", "text=", "/n"), ("wnd[0]", "sendVKey", 0)],
+        )
 
 
 class MainEntryPointTest(unittest.TestCase):

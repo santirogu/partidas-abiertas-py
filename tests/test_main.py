@@ -532,6 +532,32 @@ class DescargarHandlerTest(_TkTestCase):
         self.assertEqual(str(self.button["state"]), "normal")
         self.assertEqual(str(self.btn_atras["state"]), "normal")
 
+    def test_no_items_is_a_warning_not_an_error(self) -> None:
+        """REGRESIÓN 2026-10-29: una selección sin partidas (FBL5N solo con
+        AM) no es una falla; se avisa y no se muestra como error."""
+        mocks = {
+            "get_sap_session": MagicMock(return_value="sesion"),
+            "descargar": MagicMock(
+                side_effect=comun.SinResultadosError(
+                    "SAP no encontró partidas para FBL5N · AM · fecha clave 29.10.2026"
+                )
+            ),
+        }
+        with (
+            patch.object(fbl5n, "DISPOSICION", "/PARTABIERTA"),
+            patch("main.messagebox.askyesno", return_value=True),
+            patch("main.messagebox.showwarning") as mock_warn,
+            patch("main.messagebox.showerror") as mock_err,
+            self._sync_thread(),
+            patch.multiple("fbl5n", **mocks),
+        ):
+            self._llamar(clave="deudores", sociedades=["AM"], fecha=date(2026, 10, 29))
+        mock_err.assert_not_called()
+        self.assertEqual(mock_warn.call_args[0][0], "Sin partidas en FBL5N")
+        self.assertIn("AM", mock_warn.call_args[0][1])
+        self.assertEqual(str(self.button["state"]), "normal")
+        self.assertEqual(str(self.btn_atras["state"]), "normal")
+
     def test_progress_updates_status_label(self) -> None:
         def descargar(session, socs, progreso, fecha_clave):
             progreso("Paso 4 de 7: ejecutando el reporte…")

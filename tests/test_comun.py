@@ -560,5 +560,117 @@ class TerminarExportacionTest(unittest.TestCase):
         self.assertEqual(session.actions, [])
 
 
+class LeerBarraEstadoTest(unittest.TestCase):
+    def test_returns_status_bar_text(self) -> None:
+        session = helpers.MockSession()
+        session.mostrar("wnd[0]/sbar", " Seleccione una función válida ")
+        self.assertEqual(comun.leer_barra_estado(session), "Seleccione una función válida")
+
+    def test_missing_status_bar_returns_empty(self) -> None:
+        session = helpers.MockSession()
+        session.faltantes.add(comun.ID_BARRA_ESTADO)
+        self.assertEqual(comun.leer_barra_estado(session), "")
+
+
+class DescribirPantallaTest(unittest.TestCase):
+    def test_includes_window_title_and_status_bar(self) -> None:
+        session = helpers.MockSession()
+        session.mostrar("wnd[0]", "Lista part.indiv.deudores")
+        session.mostrar("wnd[0]/sbar", "Seleccione una función válida")
+        self.assertEqual(
+            comun.describir_pantalla(session),
+            "ventana «Lista part.indiv.deudores», barra de estado «Seleccione una función válida»",
+        )
+
+    def test_nothing_readable_returns_empty(self) -> None:
+        self.assertEqual(comun.describir_pantalla(object()), "")
+
+
+class DiagnosticoSapTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.session = helpers.MockSession()
+        self.session.mostrar("wnd[0]", "Lista part.indiv.deudores")
+        self.session.mostrar("wnd[0]/sbar", "Seleccione una función válida")
+
+    def test_adds_sap_screen_to_errors_and_logs_it(self) -> None:
+        """REGRESIÓN 2026-10-29: el error 619 de FBL5N no decía que SAP
+        seguía en la pantalla de selección."""
+        with (
+            self.assertLogs(comun.logger, level="ERROR") as logs,
+            self.assertRaises(RuntimeError) as ctx,
+            comun.diagnostico_sap(self.session),
+        ):
+            raise RuntimeError("Falló: Ubicar la lista de disposiciones")
+        mensaje = str(ctx.exception)
+        self.assertIn("Falló: Ubicar la lista de disposiciones", mensaje)
+        self.assertIn("En SAP: ventana «Lista part.indiv.deudores»", mensaje)
+        self.assertIn("Seleccione una función válida", logs.output[0])
+        self.assertIsInstance(ctx.exception.__cause__, RuntimeError)
+
+    def test_user_facing_errors_pass_unchanged(self) -> None:
+        for error in (comun.SinResultadosError("sin partidas"), ValueError("dato inválido")):
+            with self.subTest(tipo=type(error).__name__):
+                with self.assertRaises(type(error)) as ctx, comun.diagnostico_sap(self.session):
+                    raise error
+                self.assertIs(ctx.exception, error)
+
+    def test_without_screen_info_reraises_original(self) -> None:
+        original = RuntimeError("falló")
+        with self.assertRaises(RuntimeError) as ctx, comun.diagnostico_sap(object()):
+            raise original
+        self.assertIs(ctx.exception, original)
+
+
+class ResumirSeleccionTest(unittest.TestCase):
+    def test_few_companies_and_key_date(self) -> None:
+        self.assertEqual(
+            comun.resumir_seleccion("FBL5N", ["AM"], date(2026, 10, 29)),
+            "FBL5N · AM · fecha clave 29.10.2026",
+        )
+
+    def test_all_companies_without_date(self) -> None:
+        self.assertEqual(
+            comun.resumir_seleccion("Y_FI_GRL_004", list(comun.SOCIEDADES)),
+            "Y_FI_GRL_004 · todas las sociedades",
+        )
+
+    def test_many_companies_are_counted(self) -> None:
+        self.assertIn("6 sociedades", comun.resumir_seleccion("FBL1N", list(comun.SOCIEDADES[:6])))
+
+
+class VerificarResultadoTest(unittest.TestCase):
+    CAMPO = "wnd[0]/usr/ctxtPA_STIDA"
+
+    def test_list_on_screen_continues(self) -> None:
+        session = helpers.MockSession()
+        session.faltantes.add(self.CAMPO)  # ya no está la pantalla de selección
+        comun.verificar_resultado(session, self.CAMPO, "FBL5N · ISA")
+        self.assertEqual(session.actions, [])
+
+    def test_selection_screen_means_no_items(self) -> None:
+        session = helpers.MockSession()
+        session.mostrar("wnd[0]/sbar", "No se seleccionaron partidas")
+        with self.assertRaises(comun.SinResultadosError) as ctx:
+            comun.verificar_resultado(session, self.CAMPO, "FBL5N · AM · fecha clave 29.10.2026")
+        mensaje = str(ctx.exception)
+        self.assertIn("FBL5N · AM · fecha clave 29.10.2026", mensaje)
+        self.assertIn("no se generó ningún archivo", mensaje)
+        self.assertIn("Mensaje de SAP: «No se seleccionaron partidas»", mensaje)
+        self.assertEqual(
+            session.actions,
+            [("wnd[0]/tbar[0]/okcd", "text=", "/n"), ("wnd[0]", "sendVKey", 0)],
+        )
+
+    def test_message_without_status_bar_text(self) -> None:
+        with self.assertRaises(comun.SinResultadosError) as ctx:
+            comun.verificar_resultado(helpers.MockSession(), self.CAMPO, "FBL1N · ISA")
+        self.assertNotIn("Mensaje de SAP", str(ctx.exception))
+
+    def test_is_a_runtime_error(self) -> None:
+        """Las CLI capturan RuntimeError: un reporte sin partidas sale con
+        código 1 y el mensaje, sin traceback."""
+        self.assertTrue(issubclass(comun.SinResultadosError, RuntimeError))
+
+
 if __name__ == "__main__":
     unittest.main()

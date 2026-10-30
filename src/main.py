@@ -37,6 +37,7 @@ from comun import (
     SOCIEDADES,
     TITULAR,
     TITULO_APP,
+    SinResultadosError,
     buscar_ultimo_export,
     com_apartment,
     configurar_logging,
@@ -458,6 +459,9 @@ def _descargar_handler(
     def show_info(title: str, msg: str) -> None:
         root.after(0, lambda: messagebox.showinfo(title, msg))
 
+    def show_warning(title: str, msg: str) -> None:
+        root.after(0, lambda: messagebox.showwarning(title, msg))
+
     def show_error(title: str, msg: str) -> None:
         root.after(0, lambda: messagebox.showerror(title, msg))
 
@@ -477,6 +481,10 @@ def _descargar_handler(
                     session, socs, progreso=progreso, **argumentos_fecha
                 )
                 show_info("Descarga completada", f"Archivo guardado en:\n{Path(carpeta) / nombre}")
+            except SinResultadosError as exc:
+                # No es una falla: la selección no tiene partidas.
+                log(f"{transaccion} sin partidas: {exc}")
+                show_warning(f"Sin partidas en {transaccion}", str(exc))
             except Exception as exc:
                 logger.exception("Falló la descarga de %s", transaccion)
                 show_error(f"Error en la descarga de {transaccion}", str(exc))

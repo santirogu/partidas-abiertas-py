@@ -70,6 +70,21 @@ class MockSession:
         object.__setattr__(grilla, "_celdas", {(i, columna): v for i, v in enumerate(valores)})
         return grilla
 
+    def mostrar(self, element_id: str, texto: str) -> None:
+        """Pone `texto` en un control sin registrarlo como acción (lo que SAP
+        muestra, p. ej. el título de la ventana o la barra de estado)."""
+        object.__setattr__(self.findById(element_id), "text", texto)
+
+    @property
+    def ActiveWindow(self) -> _MockElement:  # nombre de la API de SAP
+        return self.findById("wnd[0]")
+
+    def simular_lista_tras_ejecutar(self, id_campo_seleccion: str) -> None:
+        """Al pulsar Ejecutar, SAP deja la pantalla de selección y muestra la
+        lista: `id_campo_seleccion` deja de existir. Sin esto, la sesión
+        falsa se comporta como un reporte sin resultados."""
+        self.al_presionar["wnd[0]/tbar[1]/btn[8]"] = lambda: self.faltantes.add(id_campo_seleccion)
+
 
 class _MockElement:
     # Propiedades que SAP GUI Scripting permite asignar y que vale la pena

@@ -38,14 +38,17 @@ from comun import (
     abrir_transaccion,
     configurar_logging,
     crear_avisador,
+    diagnostico_sap,
     ejecutar,
     ejecutar_reporte,
     exportar_hoja_calculo,
     get_sap_session,
     nombre_con_timestamp,
     pegar_seleccion_multiple,
+    resumir_seleccion,
     terminar_exportacion,
     validar_sociedades,
+    verificar_resultado,
 )
 from paths import SALIDA_DIR
 
@@ -121,17 +124,19 @@ def descargar(
     avisar = crear_avisador(progreso)
 
     avisar(f"Y_FI_GRL_004: {len(socs)} sociedad(es)")
-    avisar("Paso 1 de 5: abriendo Y_FI_GRL_004…")
-    abrir_transaccion(session, TRANSACCION)
-    avisar("Paso 2 de 5: seleccionando planes de cuentas y sociedades…")
-    seleccionar_planes_de_cuentas(session)
-    seleccionar_sociedades(session, socs)
-    avisar("Paso 3 de 5: ejecutando el reporte (puede tardar varios minutos)…")
-    ejecutar_reporte(session)
-    avisar("Paso 4 de 5: exportando a Excel…")
-    archivo = exportar_hoja_calculo(session, carpeta, nombre)
-    avisar("Paso 5 de 5: esperando a que SAP termine de guardar…")
-    terminar_exportacion(session, archivo, TIMEOUT_ARCHIVO_SEG)
+    with diagnostico_sap(session):
+        avisar("Paso 1 de 5: abriendo Y_FI_GRL_004…")
+        abrir_transaccion(session, TRANSACCION)
+        avisar("Paso 2 de 5: seleccionando planes de cuentas y sociedades…")
+        seleccionar_planes_de_cuentas(session)
+        seleccionar_sociedades(session, socs)
+        avisar("Paso 3 de 5: ejecutando el reporte (puede tardar varios minutos)…")
+        ejecutar_reporte(session)
+        verificar_resultado(session, ID_CAMPO_PLAN_CUENTAS, resumir_seleccion(TRANSACCION, socs))
+        avisar("Paso 4 de 5: exportando a Excel…")
+        archivo = exportar_hoja_calculo(session, carpeta, nombre)
+        avisar("Paso 5 de 5: esperando a que SAP termine de guardar…")
+        terminar_exportacion(session, archivo, TIMEOUT_ARCHIVO_SEG)
     avisar(f"Y_FI_GRL_004 listo: {archivo}")
     return str(carpeta), nombre
 

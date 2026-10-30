@@ -88,6 +88,16 @@ Grabación del 2026-10-28 (`FBL5N.vbs`). Módulo: `src/fbl5n.py`. Es la
 **Disposición:** `/PARTABIERTA`, la misma que FBL1N (`fbl5n.DISPOSICION`,
 confirmada el 2026-10-28).
 
+**Primera prueba en Windows (2026-10-29, ~11:30):** con solo la sociedad
+AM y fecha clave 29.10.2026. Quedó validado con SAP real: deudor `*` por
+selección múltiple, sociedad pegada desde el portapapeles, fecha clave
+por calendario y CME marcado. Falló después de Ejecutar: AM no tenía
+partidas de deudores, SAP se quedó en la pantalla de selección y la app
+pulsó "Seleccionar disposición" ("Seleccione una función válida") y no
+encontró la lista (error 619). Corregido con `comun.verificar_resultado`:
+ahora la app avisa "Sin partidas" y no intenta seguir. En el export de
+ejemplo, AM tenía 1 sola partida y BOSQ, CEYT, INCO, ISAV y PDI ninguna.
+
 **Export de ejemplo** (`EXPORT_20261028_224456_FBL5N.XLSX`, 3,7 MB): una
 hoja, 27 columnas (distintas de las de FBL1N: trae vencimiento neto y
 demora), 28.538 partidas de 23 sociedades más 7 filas de totales.

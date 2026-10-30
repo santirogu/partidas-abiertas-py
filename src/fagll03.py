@@ -45,6 +45,7 @@ from comun import (
     buscar_ultimo_export,
     configurar_logging,
     crear_avisador,
+    diagnostico_sap,
     ejecutar_reporte,
     elegir_disposicion,
     elegir_fecha_en_calendario,
@@ -52,10 +53,12 @@ from comun import (
     get_sap_session,
     nombre_con_timestamp,
     pegar_seleccion_multiple,
+    resumir_seleccion,
     terminar_exportacion,
     validar_disposicion,
     validar_fecha_clave,
     validar_sociedades,
+    verificar_resultado,
 )
 from paths import SALIDA_DIR
 from y_fi_grl_004 import PREFIJO_SALIDA as PREFIJO_MAESTRO
@@ -210,21 +213,25 @@ def descargar(
     avisar(
         f"FAGLL03: {len(cuentas)} cuenta(s), {len(socs)} sociedad(es), fecha clave {fecha:%d.%m.%Y}"
     )
-    avisar("Paso 2 de 8: abriendo FAGLL03…")
-    abrir_transaccion(session, TRANSACCION)
-    avisar(f"Paso 3 de 8: cargando {len(cuentas)} cuentas y las sociedades…")
-    seleccionar_cuentas(session, cuentas)
-    seleccionar_sociedades(session, socs)
-    avisar("Paso 4 de 8: fijando la fecha clave…")
-    fijar_fecha_clave(session, fecha)
-    avisar("Paso 5 de 8: ejecutando el reporte (puede tardar varios minutos)…")
-    ejecutar_reporte(session)
-    avisar(f"Paso 6 de 8: aplicando la disposición {disposicion}…")
-    elegir_disposicion(session, disposicion)
-    avisar("Paso 7 de 8: exportando a Excel (con todas las sociedades tarda)…")
-    archivo = exportar_hoja_calculo(session, carpeta, nombre)
-    avisar("Paso 8 de 8: esperando a que SAP termine de guardar…")
-    terminar_exportacion(session, archivo, TIMEOUT_ARCHIVO_SEG)
+    with diagnostico_sap(session):
+        avisar("Paso 2 de 8: abriendo FAGLL03…")
+        abrir_transaccion(session, TRANSACCION)
+        avisar(f"Paso 3 de 8: cargando {len(cuentas)} cuentas y las sociedades…")
+        seleccionar_cuentas(session, cuentas)
+        seleccionar_sociedades(session, socs)
+        avisar("Paso 4 de 8: fijando la fecha clave…")
+        fijar_fecha_clave(session, fecha)
+        avisar("Paso 5 de 8: ejecutando el reporte (puede tardar varios minutos)…")
+        ejecutar_reporte(session)
+        verificar_resultado(
+            session, ID_CAMPO_FECHA_CLAVE, resumir_seleccion(TRANSACCION, socs, fecha)
+        )
+        avisar(f"Paso 6 de 8: aplicando la disposición {disposicion}…")
+        elegir_disposicion(session, disposicion)
+        avisar("Paso 7 de 8: exportando a Excel (con todas las sociedades tarda)…")
+        archivo = exportar_hoja_calculo(session, carpeta, nombre)
+        avisar("Paso 8 de 8: esperando a que SAP termine de guardar…")
+        terminar_exportacion(session, archivo, TIMEOUT_ARCHIVO_SEG)
     avisar(f"FAGLL03 listo: {archivo}")
     return str(carpeta), nombre
 
